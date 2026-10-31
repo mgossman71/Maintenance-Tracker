@@ -205,8 +205,11 @@ export function equipmentRoutes(deps: AppDeps) {
     const row = insertTask(db, {
       ...parsed.data,
       equipmentId: eq.id,
-      // a meter task born against a live reading starts counting from it
-      baselineMeter: parsed.data.meterInterval != null ? eq.reading : null,
+      // explicit baseline wins (0 = first service due at an absolute meter
+      // point); otherwise a meter task born against a live reading starts
+      // counting from it
+      baselineMeter:
+        parsed.data.meterInterval == null ? null : (parsed.data.baselineMeter ?? eq.reading),
     });
     return c.json(taskWithDue(deps, eq, row, listInterventionsForEquipment(db, eq.id)), 201);
   });

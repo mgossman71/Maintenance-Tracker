@@ -112,7 +112,12 @@ export type ReadingUpdate = z.infer<typeof readingUpdateSchema>;
 // ---- tasks -------------------------------------------------------------------
 
 const taskIntervals = (
-  v: { kind: "interval" | "expiry"; monthsInterval?: number | null; meterInterval?: number | null },
+  v: {
+    kind: "interval" | "expiry";
+    monthsInterval?: number | null;
+    meterInterval?: number | null;
+    baselineMeter?: number | null;
+  },
   ctx: z.RefinementCtx,
 ) => {
   if (v.kind === "interval" && v.monthsInterval == null && v.meterInterval == null) {
@@ -120,6 +125,13 @@ const taskIntervals = (
       code: "custom",
       path: ["monthsInterval"],
       message: "interval tasks need at least one of monthsInterval / meterInterval",
+    });
+  }
+  if (v.baselineMeter != null && v.meterInterval == null) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["baselineMeter"],
+      message: "baselineMeter only anchors a meter interval",
     });
   }
   if (v.kind === "expiry" && (v.monthsInterval != null || v.meterInterval != null)) {
@@ -138,6 +150,12 @@ export const taskCreateSchema = z
     kind: taskKindSchema,
     monthsInterval: z.number().int().min(1).nullish(),
     meterInterval: z.number().positive().nullish(),
+    /**
+     * Pin where the meter count starts (0 = "due at exactly meterInterval",
+     * i.e. an absolute first-service point). Absent = the equipment's
+     * current reading. Server-owned; the equipment form uses 0.
+     */
+    baselineMeter: z.number().nonnegative().nullish(),
     currentExpiryDate: isoDateSchema.nullish(),
   })
   .superRefine(taskIntervals);

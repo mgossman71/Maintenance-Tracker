@@ -12,9 +12,10 @@ export interface EquipmentFormValues {
   year: number | null;
   meterKind: MeterKind;
   /**
-   * Create-mode shortcut: N miles/hours until the next service. The parent
-   * turns it into a real "Service" task (N units OR 12 months, whichever
-   * comes first) right after creating the equipment.
+   * Create-mode shortcut: the METER POINT (odometer/hour-meter reading) at
+   * which the first service is due — NOT an interval. The parent turns it
+   * into a "Service" task counting from zero, due at that reading OR
+   * 12 months, whichever comes first.
    */
   serviceInterval?: number | null;
 }
@@ -223,7 +224,7 @@ export function EquipmentForm({
         {!editing && unit !== null && (
           <div className="space-y-2 pt-1">
             <Label htmlFor={`${testIdPrefix}-interval`}>
-              {unit === "miles" ? "Miles" : "Hours"} until next service
+              Next service due at {unit === "miles" ? "mileage" : "hours"}
             </Label>
             <div className="flex items-center gap-3">
               <Input
@@ -233,13 +234,14 @@ export function EquipmentForm({
                 step="any"
                 value={serviceInterval}
                 onChange={(e) => setServiceInterval(e.target.value)}
-                placeholder={unit === "miles" ? "5000" : "100"}
+                placeholder={unit === "miles" ? "1000" : "10"}
                 className="w-32"
                 data-testid={`${testIdPrefix}-interval`}
               />
               <p className="text-xs text-muted-foreground">
-                Creates a “Service” task due every {unit} <em>or</em> 12 months — whichever comes
-                first. Edit it later in the Tasks tab.
+                The meter point the service is due at — enter <strong>1000</strong> for “due at
+                1,000 miles.” Creates a “Service” task due then <em>or</em> in 12 months, whichever
+                comes first. Recurring intervals live on tasks in the Tasks tab.
               </p>
             </div>
             {badInterval && (
@@ -247,7 +249,7 @@ export function EquipmentForm({
                 className="text-sm text-destructive"
                 data-testid={`${testIdPrefix}-interval-error`}
               >
-                The interval must be a positive number of {unit}.
+                Enter a positive number of {unit}.
               </p>
             )}
           </div>

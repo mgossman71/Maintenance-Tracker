@@ -290,10 +290,65 @@ describe("tasks + engine through HTTP", () => {
     expect(leaky.status).toBe(400);
   });
 
-  // the reported bug, end to end: fresh equipment, 1,000-mile Service task,
-  // then the first reading of 600 — that must mean "due at 1,600", never
-  // overdue, and the count must NOT rotate as later readings climb
-  test("Sporster S regression: interval 1000 + first reading 600 → due at 1600", async () => {
+  // the reported flow, now with its ACTUAL meaning: "first service due AT
+  // 1,000 miles" is an absolute meter point — baseline 0 pins it there;
+  // 600 on the clock means 400 to go, never 1,600 and never overdue
+  test("first service due AT 1,000: absolute meter point, not interval-from-reading", async () => {
+    const eq = await makeEquipment(t, { name: "Sporster S", meterKind: "miles" });
+    const task = await (
+      await t.call(`/api/equipment/${eq.id}/tasks`, {
+        method: "POST",
+        auth: true,
+        body: JSON.stringify({
+          name: "Service",
+          kind: "interval",
+          monthsInterval: 12,
+          meterInterval: 1000,
+          baselineMeter: 0,
+        }),
+      })
+    ).json();
+    expect(task.due.status).toBe("due-soon"); // no reading yet: amber nudge
+
+    await t.call(`/api/equipment/${eq.id}/reading`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ reading: 600 }),
+    });
+    let row = (await (await t.call(`/api/equipment/${eq.id}/tasks`, { auth: true })).json())[0];
+    expect(row.due.reasons).toContain("meter_baseline_created"); // baseline 0 survived
+    expect(row.due.status).toBe("ok");
+    expect(row.due.nextDueMeter).toBe(1000); // DUE AT 1,000 — the point, not point+interval
+    expect(row.due.remainingMeter).toBe(400);
+
+    await t.call(`/api/equipment/${eq.id}/reading`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ reading: 1050 }),
+    });
+    row = (await (await t.call(`/api/equipment/${eq.id}/tasks`, { auth: true })).json())[0];
+    expect(row.due.status).toBe("overdue");
+    expect(row.due.remainingMeter).toBe(-50);
+  });
+
+  test("baselineMeter is validated: needs a meter interval", async () => {
+    const eq = await makeEquipment(t, { name: "Strict Baseline", meterKind: "miles" });
+    const bad = await t.call(`/api/equipment/${eq.id}/tasks`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({
+        name: "Months only",
+        kind: "interval",
+        monthsInterval: 6,
+        baselineMeter: 0,
+      }),
+    });
+    expect(bad.status).toBe(400);
+  });
+
+  // an interval task added WITHOUT a baseline still counts from where the
+  // meter stands when the first reading lands
+  test("interval task from the first reading: 1000 interval + reading 600 → due at 1600", async () => {
     const eq = await makeEquipment(t, { name: "Sporster S", meterKind: "miles" });
     const created = await (
       await t.call(`/api/equipment/${eq.id}/tasks`, {

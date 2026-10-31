@@ -124,20 +124,25 @@ test.describe("equipment CRUD + meters", () => {
     await page.getByTestId("create-year").selectOption("2019");
     await page.getByTestId("create-desc").fill("garage-kept tractor");
 
-    // the interval field appears with the unit and speaks the unit's word
+    // the field is the meter point the first service is due AT
     await page.getByTestId("create-meter").selectOption("miles");
-    await expect(page.getByText("Miles until next service")).toBeVisible();
+    await expect(page.getByText("Next service due at mileage")).toBeVisible();
     await page.getByTestId("create-interval").fill("5000");
     await page.getByTestId("create-submit").click();
 
     await page.getByRole("link", { name: /Field Tractor/ }).click();
     await expect(page.getByText("2019 · garage-kept tractor")).toBeVisible();
 
-    // the interval became an editable task — 5,000 miles OR 12 months
+    // the interval became an editable task — due AT 5,000 miles, not from
+    // wherever the odometer happens to sit
     await page.getByTestId("tab-tasks").click();
-    await expect(
-      page.getByTestId("tasks-pane").locator("li").filter({ hasText: "Service" }),
-    ).toBeVisible();
+    const serviceRow = page.getByTestId("tasks-pane").locator("li").filter({ hasText: "Service" });
+    await expect(serviceRow).toBeVisible();
+    await page.getByTestId("tab-info").click();
+    await page.getByTestId("reading-input").fill("1000");
+    await page.getByTestId("reading-submit").click();
+    await page.getByTestId("tab-tasks").click();
+    await expect(serviceRow).toContainText("due at 5,000");
 
     // clean up the shared vault
     await page.getByTestId("tab-info").click();

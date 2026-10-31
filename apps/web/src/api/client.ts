@@ -95,6 +95,8 @@ export interface TaskCreateInput {
   kind: "interval" | "expiry";
   monthsInterval?: number | null;
   meterInterval?: number | null;
+  /** Pin where the meter count starts; 0 = due at exactly meterInterval. */
+  baselineMeter?: number | null;
   currentExpiryDate?: string | null;
 }
 

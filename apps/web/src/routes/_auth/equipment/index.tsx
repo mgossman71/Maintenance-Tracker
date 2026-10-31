@@ -154,15 +154,16 @@ function CreateEquipmentDialog({ open, onClose }: { open: boolean; onClose: () =
     try {
       const { serviceInterval, ...input } = values;
       const eq = await api.equipment.create(input);
-      // the form's interval is a shortcut for a real task — N units OR
-      // 12 months, whichever comes first (manufacturer practice), and the
-      // task stays editable in the Tasks tab
+      // the form's field is the METER POINT the first service is due AT:
+      // counting from zero, interval = that point → due exactly there (OR
+      // in 12 months, whichever comes first); stays editable in the Tasks tab
       if (serviceInterval != null && input.meterKind !== undefined && input.meterKind !== "none") {
         await api.equipment.createTask(eq.id, {
           name: "Service",
           kind: "interval",
           monthsInterval: 12,
           meterInterval: serviceInterval,
+          baselineMeter: 0,
         });
       }
       await qc.invalidateQueries({ queryKey: ["equipment"] });

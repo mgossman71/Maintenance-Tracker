@@ -220,7 +220,19 @@ describe("no-history states anchor at the task's start", () => {
 
   // the reported bug: 1,000-unit interval, first reading 600 becomes the
   // baseline (server backfill) → due at 1,600, NOT overdue
-  test("the Sporster S case: 1000 interval, first reading 600 → due at 1600", () => {
+  test("absolute first service: baseline 0 + interval 1000 → due AT 1,000", () => {
+    const due = run(
+      task({ meterInterval: 1000, baselineMeter: 0, createdAt: "2026-06-15" }),
+      eq({ meterKind: "miles", reading: 600 }),
+      [],
+      now,
+    );
+    expect(due.status).toBe("ok");
+    expect(due.nextDueMeter).toBe(1000); // the point itself, not 1,600
+    expect(due.remainingMeter).toBe(400);
+  });
+
+  test("interval task from its baseline: 600 + 1000 → due at 1600", () => {
     const due = run(
       task({ meterInterval: 1000, baselineMeter: 600, createdAt: "2026-06-15" }),
       eq({ meterKind: "miles", reading: 600, readingUpdatedAt: "2026-06-15" }),
