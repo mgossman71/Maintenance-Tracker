@@ -1,17 +1,19 @@
-import type { DashboardEquipment } from "@maintenance-tracker/shared";
-import { useQueryClient } from "@tanstack/react-query";
+import type { DashboardEquipment, TaskWithDue } from "@maintenance-tracker/shared";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { CheckCircle2, LayoutDashboard, Plus } from "lucide-react";
+import { CheckCircle2, LayoutDashboard, Pencil, Plus } from "lucide-react";
 import { useState } from "react";
-import { ApiError, api, type EquipmentRow } from "@/api/client";
-import { DueChip, dueSummary } from "@/components/due";
+import { ApiError, api, type EquipmentRow, type TaskUpdateInput } from "@/api/client";
+import { DueChip, dashboardLine } from "@/components/due";
 import { EmptyState, PageError } from "@/components/empty-state";
 import { InterventionForm, type InterventionFormValues } from "@/components/intervention-form";
+import { TaskForm } from "@/components/task-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { invalidateDashboard, useDashboard, useDashboardMeterActions } from "@/hooks/use-dashboard";
+import { usePresets } from "@/hooks/use-tasks";
 import { formatReading } from "@/lib/format";
 import { useTitle } from "@/lib/use-title";
 
@@ -27,10 +29,26 @@ export const Route = createFileRoute("/_auth/")({
 function DashboardPage() {
   useTitle("Dashboard — Maintenance-Tracker");
   const dashboard = useDashboard();
+  const qc = useQueryClient();
+  const presets = usePresets();
   const [doneTarget, setDoneTarget] = useState<{
     equipment: DashboardEquipment;
     taskId: string;
   } | null>(null);
+  // change a maintenance interval without leaving the dashboard
+  const [editTarget, setEditTarget] = useState<{
+    equipment: DashboardEquipment;
+    task: TaskWithDue;
+  } | null>(null);
+  const updateTask = useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: TaskUpdateInput }) =>
+      api.tasks.update(id, patch),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["dashboard"] });
+      void qc.invalidateQueries({ queryKey: ["equipment"] });
+      setEditTarget(null);
+    },
+  });
 
   if (dashboard.isPending) return <p className="text-sm text-muted-foreground">Loading…</p>;
   if (dashboard.isError || !dashboard.data)
@@ -94,6 +112,7 @@ function DashboardPage() {
           key={block.id}
           block={block}
           onDone={(taskId) => setDoneTarget({ equipment: block, taskId })}
+          onEdit={(task) => setEditTarget({ equipment: block, task })}
         />
       ))}
 
@@ -106,6 +125,29 @@ function DashboardPage() {
           />
         )}
       </Dialog>
+
+      <Dialog
+        open={editTarget !== null}
+        onClose={() => setEditTarget(null)}
+        title={editTarget ? `Edit “${editTarget.task.name}”` : "Edit task"}
+      >
+        {editTarget !== null && (
+          <TaskForm
+            key={editTarget.task.id}
+            equipment={editTarget.equipment as unknown as EquipmentRow}
+            task={editTarget.task}
+            presets={presets.data ?? []}
+            busy={updateTask.isPending}
+            error={updateTask.error}
+            onSubmit={(values) => {
+              const { kind: _kind, ...patch } = values; // kind is fixed at creation
+              updateTask.mutate({ id: editTarget.task.id, patch });
+            }}
+            onCancel={() => setEditTarget(null)}
+            testIdPrefix="dash-edit"
+          />
+        )}
+      </Dialog>
     </section>
   );
 }
@@ -113,9 +155,11 @@ function DashboardPage() {
 function DashboardBlock({
   block,
   onDone,
+  onEdit,
 }: {
   block: DashboardEquipment;
   onDone: (taskId: string) => void;
+  onEdit: (task: TaskWithDue) => void;
 }) {
   const unit = block.meterKind === "miles" ? "mi" : block.meterKind === "hours" ? "h" : null;
 
@@ -169,10 +213,25 @@ function DashboardBlock({
                     <span className="truncate text-sm font-medium">{task.name}</span>
                     <DueChip status={task.due.status} />
                   </div>
-                  {dueSummary(task, unit) && (
-                    <p className="text-xs text-muted-foreground">{dueSummary(task, unit)}</p>
+                  {dashboardLine(task, unit) && (
+                    <p
+                      className="text-xs text-muted-foreground"
+                      data-testid={`dash-line-${task.id}`}
+                    >
+                      {dashboardLine(task, unit)}
+                    </p>
                   )}
                 </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label={`Edit ${task.name}`}
+                  onClick={() => onEdit(task)}
+                  data-testid={`dash-edit-task-${task.id}`}
+                  title="Change the interval or due point"
+                >
+                  <Pencil />
+                </Button>
                 <Button
                   size="sm"
                   variant="outline"

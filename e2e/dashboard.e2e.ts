@@ -79,6 +79,47 @@ test.describe("dashboard", () => {
     await expect(page.getByTestId("dashboard-totals")).toContainText("Everything is on schedule");
   });
 
+  test("the hero speaks intervals: every N, due in N miles — editable in place", async ({
+    page,
+  }) => {
+    await login(page);
+
+    // the reported flow: first service due AT 1,000 miles, 600 on the clock
+    await page.goto("/equipment");
+    await page.getByTestId("add-equipment-button").click();
+    await page.getByTestId("create-name").fill("Trail Bike");
+    await page.getByTestId("create-meter").selectOption("miles");
+    await page.getByTestId("create-interval").fill("1000");
+    await page.getByTestId("create-submit").click();
+
+    await page.getByRole("link", { name: "Trail Bike" }).click();
+    await page.getByTestId("tab-info").click();
+    await page.getByTestId("reading-input").fill("600");
+    await page.getByTestId("reading-submit").click();
+
+    // the dashboard row states the interval AND the miles to go, plainly
+    await page.goto("/");
+    const block = page.getByTestId(`dash-block-${await blockIdFor(page, "Trail Bike")}`);
+    const row = block.locator("li").filter({ hasText: "Service" });
+    await expect(row).toContainText("every 12 mo or 1,000 mi");
+    await expect(row).toContainText("due in 400 mi");
+
+    // change the maintenance interval right from the dashboard: 1,000 → 1,200
+    await row.getByRole("button", { name: "Edit Service" }).click();
+    await expect(page.getByTestId("dash-edit-meter")).toHaveValue("1000");
+    await page.getByTestId("dash-edit-meter").fill("1200");
+    await page.getByTestId("dash-edit-task-submit").click();
+
+    await expect(row).toContainText("every 12 mo or 1,200 mi");
+    await expect(row).toContainText("due in 600 mi");
+
+    // self-clean: later specs assume an empty vault (dialog-scoped: other
+    // equipment's closed delete-dialogs carry the same testid in the DOM)
+    await page.goto("/equipment");
+    await page.getByRole("button", { name: "Delete Trail Bike" }).click();
+    await page.getByRole("dialog").getByTestId("confirm-button").click();
+  });
+
   test("banner: stale again via an old date, cleared by Same reading", async ({ page }) => {
     await login(page);
     const id = await blockIdFor(page, "Rush Rocket");
