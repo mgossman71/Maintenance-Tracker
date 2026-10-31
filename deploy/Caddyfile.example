@@ -1,0 +1,21 @@
+# Caddyfile — Maintenance-Tracker behind Caddy (the canonical example).
+#
+# Caddy owns TLS and HSTS (§6.6): it obtains/renews certificates
+# automatically and redirects http → https. The app listens on loopback
+# only (docker-compose publishes 127.0.0.1:8787) and runs with
+# MT_TRUST_PROXY=1 so login rate limiting sees the real client IP.
+#
+#   sudo caddy run --config Caddyfile.example
+
+mt.example.com {
+	# Caddy's automatic HTTPS also sends Strict-Transport-Security; pin
+	# a longer max-age if you want it (be certain before includeSubDomains).
+	# header Strict-Transport-Security "max-age=63072000; includeSubDomains"
+
+	encode zstd gzip
+
+	reverse_proxy 127.0.0.1:8787 {
+		# Caddy sets X-Forwarded-For / X-Forwarded-Proto itself, which is
+		# exactly what MT_TRUST_PROXY=1 reads.
+	}
+}

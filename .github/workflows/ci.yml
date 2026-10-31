@@ -6,6 +6,20 @@ on:
   pull_request:
 
 jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      # §6.10 dependency hygiene. Informational until the current dev-only
+      # esbuild advisory clears its upstream chain (dev deps never ship in
+      # the runtime image — docker stage installs with --production).
+      - run: bun audit
+        continue-on-error: true
+
   ci:
     runs-on: ubuntu-latest
     steps:

@@ -68,6 +68,41 @@ export function requireSession(deps: {
   };
 }
 
+/**
+ * §6.7 — the header set every response carries, SPA and API alike.
+ *
+ * CSP: scripts are same-origin ONLY (the build has no inline scripts —
+ * verified against dist/index.html in M9). style-src allows 'unsafe-inline'
+ * because React legitimately sets style ATTRIBUTES; that permits styling,
+ * not script execution. frame-ancestors 'none' + X-Frame-Options: DENY is
+ * belt-and-braces for older proxies. HSTS deliberately NOT here — TLS and
+ * HSTS belong to the reverse proxy (§6.6).
+ */
+export const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data:",
+  "connect-src 'self'",
+  "font-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
+
+export function securityHeaders(): MiddlewareHandler {
+  return async (c, next) => {
+    await next();
+    // after next() — the headers ride on whatever response the route produced
+    c.res.headers.set("content-security-policy", CSP);
+    c.res.headers.set("x-content-type-options", "nosniff");
+    c.res.headers.set("referrer-policy", "same-origin");
+    c.res.headers.set("x-frame-options", "DENY");
+    c.res.headers.set("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=()");
+  };
+}
+
 /** Client IP for rate limiting — X-Forwarded-For trusted ONLY when told to (§6.4). */
 export function clientIp(
   c: { req: { header: (n: string) => string | undefined }; env?: unknown },

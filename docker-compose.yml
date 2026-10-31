@@ -1,6 +1,6 @@
 # Local/container run for Maintenance-Tracker (build-plan.md §5, §6.6).
 # The app binds loopback on the HOST by default; your TLS-terminating
-# reverse proxy (Caddy-led example in M9) points at 127.0.0.1:8787.
+# reverse proxy points at 127.0.0.1:8787 — Caddy-led example in deploy/.
 services:
   app:
     build:

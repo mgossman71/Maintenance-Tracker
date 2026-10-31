@@ -3,7 +3,7 @@ import { errorEnvelope, todayInTz } from "@maintenance-tracker/shared";
 import { Hono } from "hono";
 import type { LoginGuard } from "./auth/ratelimit.ts";
 import type { SessionConfig } from "./auth/sessions.ts";
-import { csrfProtection, requireSession } from "./http/middleware.ts";
+import { csrfProtection, requireSession, securityHeaders } from "./http/middleware.ts";
 import { attachmentsRoutes } from "./routes/attachments.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { dashboardRoutes } from "./routes/dashboard.ts";
@@ -47,6 +47,10 @@ export interface AppOptions {
  */
 export function createApp({ webDir, deps }: AppOptions = {}) {
   const app = new Hono();
+
+  // §6.7: the security header set on EVERY response — set after next(), so
+  // it covers SPA documents, assets, API bodies, errors and 404s alike.
+  app.use("*", securityHeaders());
 
   // Private-ish responses must not sit in shared caches (§6.7).
   app.use("/api/*", async (c, next) => {
