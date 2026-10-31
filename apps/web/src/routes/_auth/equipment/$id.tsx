@@ -2,8 +2,10 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Gauge, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { ApiError, type EquipmentRow } from "@/api/client";
+import { DocumentsPane } from "@/components/documents-pane";
 import { PageError } from "@/components/empty-state";
 import { EquipmentForm, type EquipmentFormValues } from "@/components/equipment-form";
+import { HistoryPane } from "@/components/history-pane";
 import { TasksPane } from "@/components/tasks-pane";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -78,8 +80,8 @@ function EquipmentDetailPage() {
 
       {tab === "info" && <InfoPane eq={eq} />}
       {tab === "tasks" && <TasksPane equipment={eq} />}
-      {tab === "history" && <PlaceholderPane what="History" milestone="M6" />}
-      {tab === "documents" && <PlaceholderPane what="Documents" milestone="M6" />}
+      {tab === "history" && <HistoryPane equipment={eq} />}
+      {tab === "documents" && <DocumentsPane equipment={eq} />}
     </section>
   );
 }
@@ -92,16 +94,6 @@ function BackLink() {
     >
       <ArrowLeft className="size-4" aria-hidden="true" /> Equipment
     </Link>
-  );
-}
-
-function PlaceholderPane({ what, milestone }: { what: string; milestone: string }) {
-  return (
-    <Card className="border-dashed">
-      <CardContent className="p-8 text-center text-sm text-muted-foreground">
-        {what} arrive in milestone {milestone}.
-      </CardContent>
-    </Card>
   );
 }
 

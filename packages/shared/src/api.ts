@@ -21,6 +21,8 @@ export const errorCodes = [
   "meterless_equipment",
   "task_equipment_mismatch",
   "meter_kind_immutable",
+  "unsupported_media",
+  "payload_too_large",
 ] as const;
 export type ErrorCode = (typeof errorCodes)[number];
 
@@ -235,4 +237,30 @@ export interface TaskPresetInfo {
   monthsInterval: number | null;
   meterInterval: number | null;
   sortOrder: number;
+}
+
+/** An attachment's metadata over the wire (bytes come from the GET route). */
+export interface AttachmentInfo {
+  id: string;
+  equipmentId: string;
+  interventionId: string | null;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+/** A recorded intervention over the wire. */
+export interface InterventionInfo {
+  id: string;
+  taskId: string | null;
+  equipmentId: string;
+  label: string | null;
+  date: string;
+  meterAt: number | null;
+  location: string | null;
+  performedBy: string | null;
+  comments: string | null;
+  expiryDate: string | null;
+  createdAt: string;
 }

@@ -1,3 +1,5 @@
+import { unlinkSync } from "node:fs";
+import { join } from "node:path";
 import {
   deleteIntervention,
   type EquipmentRow,
@@ -5,6 +7,9 @@ import {
   getIntervention,
   getTask,
   insertIntervention,
+  listAttachmentsForIntervention,
+  recalcMeterFromInterventions,
+  recalcTaskExpiry,
   updateEquipment,
   updateIntervention,
   updateTask,
@@ -14,6 +19,7 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import type { AppDeps } from "../app.ts";
 import { fail, failValidation } from "../http/errors.ts";
+import { uploadPhoto } from "./attachments.ts";
 import { readBody } from "./equipment.ts";
 
 /**
@@ -93,22 +99,66 @@ export function interventionsRoutes(deps: AppDeps) {
     const parsed = interventionUpdateSchema.safeParse(await readBody(c));
     if (!parsed.success) return failValidation(c, parsed.error);
 
-    // Invariant: a stored meterAt may never sit below the current reading.
-    if (parsed.data.meterAt != null) {
-      const eq = getEquipment(deps.db, row.equipmentId);
+    // Invariant: a stored meterAt may never sit below the current reading —
+    // UNLESS this very row is the reading's source (meterAt == current):
+    // correcting that recorded work IS how a wrong meter gets fixed, and the
+    // cascade below re-derives the reading from the remaining history.
+    const eq = getEquipment(deps.db, row.equipmentId);
+    const isReadingSource =
+      eq !== null && row.meterAt !== null && eq.reading !== null && eq.reading === row.meterAt;
+    if (parsed.data.meterAt != null && !isReadingSource) {
       if (eq !== null && eq.reading !== null && parsed.data.meterAt < eq.reading) {
         return fail(c, "meter_regressed", 409, {
           message: `meterAt cannot go below current reading ${eq.reading}`,
         });
       }
     }
-    return c.json(updateIntervention(deps.db, row.id, parsed.data));
+    const updated = updateIntervention(deps.db, row.id, parsed.data);
+
+    // ---- cascades (§2: the meter and expiry dates follow the history) ----
+    if (parsed.data.meterAt !== undefined && row.meterAt !== parsed.data.meterAt) {
+      if (eq != null && eq.reading === row.meterAt) {
+        // this row WAS the meter's source — re-derive from remaining work
+        recalcMeterFromInterventions(deps.db, row.equipmentId);
+      }
+    }
+    if (parsed.data.expiryDate !== undefined && row.expiryDate !== parsed.data.expiryDate) {
+      const task = row.taskId != null ? getTask(deps.db, row.taskId) : null;
+      if (task != null && task.kind === "expiry") recalcTaskExpiry(deps.db, task.id);
+    }
+    return c.json(updated);
+  });
+
+  /** Photos: images only, sniffed (§6.8). Attach after creating the work. */
+  app.post("/:id/photos", async (c) => {
+    const row = getIntervention(deps.db, c.req.param("id"));
+    if (!row) return fail(c, "not_found", 404);
+    return uploadPhoto(deps, c, row);
   });
 
   app.delete("/:id", (c) => {
     const row = getIntervention(deps.db, c.req.param("id"));
     if (!row) return fail(c, "not_found", 404);
+    const eq = getEquipment(deps.db, row.equipmentId);
+
+    // photo bytes are ours to sweep (FK cascades only the rows)
+    for (const a of listAttachmentsForIntervention(deps.db, row.id)) {
+      try {
+        unlinkSync(join(deps.filesDir, a.storedName));
+      } catch {
+        // already gone
+      }
+    }
     deleteIntervention(deps.db, row.id);
+
+    // ---- cascades ----
+    if (row.meterAt != null && eq != null && eq.reading === row.meterAt) {
+      recalcMeterFromInterventions(deps.db, row.equipmentId);
+    }
+    if (row.taskId != null && row.expiryDate != null) {
+      const task = getTask(deps.db, row.taskId);
+      if (task != null && task.kind === "expiry") recalcTaskExpiry(deps.db, row.taskId);
+    }
     return c.body(null, 204);
   });
 

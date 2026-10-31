@@ -1,9 +1,10 @@
 import { type DatabaseHandle, seedTaskPresetsIfEmpty } from "@maintenance-tracker/db";
-import { todayInTz } from "@maintenance-tracker/shared";
+import { errorEnvelope, todayInTz } from "@maintenance-tracker/shared";
 import { Hono } from "hono";
 import type { LoginGuard } from "./auth/ratelimit.ts";
 import type { SessionConfig } from "./auth/sessions.ts";
 import { csrfProtection, requireSession } from "./http/middleware.ts";
+import { attachmentsRoutes } from "./routes/attachments.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { equipmentRoutes } from "./routes/equipment.ts";
 import { interventionsRoutes } from "./routes/interventions.ts";
@@ -17,6 +18,9 @@ export interface AppDeps {
   guard: LoginGuard;
   trustProxy: boolean;
   tz: string;
+  /** Upload byte store, DATA_DIR/files (§6.8). */
+  filesDir: string;
+  maxUploadBytes: number;
   /** Injectable clock — the engine and sessions become deterministic in tests. */
   clock: () => number;
   /** Local calendar "today" in the deployment timezone. */
@@ -56,11 +60,22 @@ export function createApp({ webDir, deps }: AppOptions = {}) {
   if (deps !== undefined) {
     app.use("/api/*", csrfProtection({ trustProxy: deps.trustProxy }));
     app.use("/api/*", requireSession(deps));
+    // §6.8 global request cap — reject by Content-Length before buffering
+    app.use("/api/*", async (c, next) => {
+      if (c.req.method !== "GET" && c.req.method !== "HEAD") {
+        const len = Number(c.req.header("content-length") ?? "0");
+        if (len > deps.maxUploadBytes) {
+          return c.json(errorEnvelope("payload_too_large"), 413);
+        }
+      }
+      await next();
+    });
     app.route("/api/auth", authRoutes(deps));
     app.route("/api/equipment", equipmentRoutes(deps));
     app.route("/api/tasks", tasksRoutes(deps));
     app.route("/api/presets", presetsRoutes(deps));
     app.route("/api/interventions", interventionsRoutes(deps));
+    app.route("/api/attachments", attachmentsRoutes(deps));
   }
 
   if (webDir !== undefined) {
@@ -85,6 +100,8 @@ export function makeDeps(
     trustProxy?: boolean;
     tz?: string;
     clock?: () => number;
+    filesDir?: string;
+    maxUploadBytes?: number;
   },
 ): AppDeps {
   const clock = options.clock ?? (() => Date.now());
@@ -98,6 +115,8 @@ export function makeDeps(
     guard: options.guard,
     trustProxy: options.trustProxy ?? false,
     tz,
+    filesDir: options.filesDir ?? "data/files",
+    maxUploadBytes: options.maxUploadBytes ?? 25 * 1024 * 1024,
     clock,
     today: () => todayInTz(clock(), tz),
   };

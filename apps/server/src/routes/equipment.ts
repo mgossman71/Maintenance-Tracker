@@ -1,3 +1,5 @@
+import { unlinkSync } from "node:fs";
+import { join } from "node:path";
 import {
   deleteEquipment,
   type EquipmentRow,
@@ -5,6 +7,7 @@ import {
   type InterventionRow,
   insertEquipment,
   insertTask,
+  listAttachmentsForEquipment,
   listEquipment,
   listInterventionsForEquipment,
   listTasksForEquipment,
@@ -23,6 +26,7 @@ import {
 import { Hono } from "hono";
 import type { AppDeps } from "../app.ts";
 import { fail, failValidation } from "../http/errors.ts";
+import { uploadDocument } from "./attachments.ts";
 
 /** Read a JSON body; null on malformed JSON (zod then rejects null). */
 export async function readBody(c: { req: { json: () => Promise<unknown> } }): Promise<unknown> {
@@ -127,8 +131,23 @@ export function equipmentRoutes(deps: AppDeps) {
   app.delete("/:id", (c) => {
     const eq = getEquipment(db, c.req.param("id"));
     if (!eq) return fail(c, "not_found", 404);
+    // FK cascades drop attachment rows; the bytes are ours to sweep (§6.8)
+    for (const a of listAttachmentsForEquipment(db, eq.id)) {
+      try {
+        unlinkSync(join(deps.filesDir, a.storedName));
+      } catch {
+        // already gone
+      }
+    }
     deleteEquipment(db, eq.id);
     return c.body(null, 204);
+  });
+
+  /** Upload a document (any sniffable MIME, stored under DATA_DIR/files). */
+  app.post("/:id/documents", (c) => {
+    const eq = getEquipment(db, c.req.param("id"));
+    if (!eq) return fail(c, "not_found", 404);
+    return uploadDocument(deps, c, eq.id);
   });
 
   /** Explicit reading update — NEVER lowers silently (§2, §4). */

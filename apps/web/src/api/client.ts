@@ -1,6 +1,8 @@
 import type {
+  AttachmentInfo,
   AuthStatus,
   ErrorEnvelope,
+  InterventionInfo,
   TaskPresetInfo,
   TaskWithDue,
 } from "@maintenance-tracker/shared";
@@ -27,6 +29,16 @@ async function request<T>(
     headers: init.body !== undefined ? { "content-type": "application/json" } : undefined,
     body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
   });
+  return unwrap<T>(res);
+}
+
+/** Multipart upload — the browser sets the content-type (and boundary). */
+async function requestForm<T>(path: string, form: FormData): Promise<T> {
+  const res = await fetch(path, { method: "POST", credentials: "same-origin", body: form });
+  return unwrap<T>(res);
+}
+
+async function unwrap<T>(res: Response): Promise<T> {
   if (res.status === 204) return undefined as T;
   const payload: unknown = await res.json().catch(() => null);
   if (!res.ok) {
@@ -90,6 +102,19 @@ export interface TaskPresetInput {
   meterInterval?: number | null;
 }
 
+export interface InterventionCreateInput {
+  taskId?: string | null;
+  label?: string | null;
+  date: string;
+  meterAt?: number | null;
+  location?: string | null;
+  performedBy?: string | null;
+  comments?: string | null;
+  expiryDate?: string | null;
+}
+
+export type InterventionUpdateInput = Partial<Omit<InterventionCreateInput, "taskId" | "label">>;
+
 export const api = {
   status: () => request<AuthStatus>("/api/auth/status"),
   setup: (password: string) =>
@@ -138,5 +163,35 @@ export const api = {
     update: (id: string, patch: Partial<TaskPresetInput>) =>
       request<TaskPresetInfo>(`/api/presets/${id}`, { method: "PATCH", body: patch }),
     remove: (id: string) => request<void>(`/api/presets/${id}`, { method: "DELETE" }),
+  },
+  interventions: {
+    forEquipment: (equipmentId: string) =>
+      request<InterventionInfo[]>(`/api/equipment/${equipmentId}/interventions`),
+    create: (equipmentId: string, input: InterventionCreateInput) =>
+      request<InterventionInfo>(`/api/equipment/${equipmentId}/interventions`, {
+        method: "POST",
+        body: input,
+      }),
+    update: (id: string, patch: InterventionUpdateInput) =>
+      request<InterventionInfo>(`/api/interventions/${id}`, { method: "PATCH", body: patch }),
+    remove: (id: string) => request<void>(`/api/interventions/${id}`, { method: "DELETE" }),
+    /** Images only — sniffed on the server (§6.8). */
+    addPhoto: (id: string, file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      return requestForm<AttachmentInfo>(`/api/interventions/${id}/photos`, form);
+    },
+  },
+  attachments: {
+    forEquipment: (equipmentId: string) =>
+      request<AttachmentInfo[]>(`/api/attachments/equipment/${equipmentId}`),
+    remove: (id: string) => request<void>(`/api/attachments/${id}`, { method: "DELETE" }),
+    /** Session cookie rides along (<img src> and <a href> are credentialed same-origin). */
+    url: (id: string) => `/api/attachments/${id}`,
+    uploadDocument: (equipmentId: string, file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      return requestForm<AttachmentInfo>(`/api/equipment/${equipmentId}/documents`, form);
+    },
   },
 };

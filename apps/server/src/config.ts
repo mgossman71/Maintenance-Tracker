@@ -19,6 +19,8 @@ const EnvSchema = z.object({
   MT_SESSION_ABSOLUTE_DAYS: z.coerce.number().positive().max(730).default(90),
   /** Local dev over plain http: drop Secure/__Host- cookie traits (§6.6). */
   MT_INSECURE_COOKIES: z.enum(["0", "1"]).default("0"),
+  /** Per-upload / request-body cap (§6.8), megabytes. */
+  MT_MAX_UPLOAD_MB: z.coerce.number().int().positive().max(500).default(25),
 });
 
 export interface AppConfig {
@@ -32,6 +34,9 @@ export interface AppConfig {
   sessionIdleMs: number;
   sessionAbsoluteMs: number;
   insecureCookies: boolean;
+  /** Upload byte store: DATA_DIR/files (§6.8), mode 0700. */
+  filesDir: string;
+  maxUploadBytes: number;
 }
 
 /** Default built-web location: apps/web/dist relative to this package. */
@@ -54,5 +59,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     sessionIdleMs: parsed.MT_SESSION_IDLE_DAYS * DAY_MS,
     sessionAbsoluteMs: parsed.MT_SESSION_ABSOLUTE_DAYS * DAY_MS,
     insecureCookies: parsed.MT_INSECURE_COOKIES === "1",
+    filesDir: `${parsed.MT_DATA_DIR.replace(/\/+$/, "")}/files`,
+    maxUploadBytes: parsed.MT_MAX_UPLOAD_MB * 1024 * 1024,
   };
 }

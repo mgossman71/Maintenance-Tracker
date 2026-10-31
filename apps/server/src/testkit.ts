@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { type DatabaseHandle, openDatabase, runMigrations } from "@maintenance-tracker/db";
 import { createApp, makeDeps } from "./app.ts";
 import { LoginGuard } from "./auth/ratelimit.ts";
@@ -38,10 +41,11 @@ export interface TestApp {
 }
 
 export function buildTestApp(
-  opts: { insecureCookies?: boolean; trustProxy?: boolean } = {},
+  opts: { insecureCookies?: boolean; trustProxy?: boolean; maxUploadBytes?: number } = {},
 ): TestApp {
   const handle = openDatabase(":memory:");
   runMigrations(handle.db);
+  const filesDir = mkdtempSync(join(tmpdir(), "mt-files-"));
 
   const clock = {
     ms: NOW0,
@@ -60,6 +64,8 @@ export function buildTestApp(
     trustProxy: opts.trustProxy ?? false,
     tz: "UTC",
     clock: () => clock.ms,
+    filesDir,
+    maxUploadBytes: opts.maxUploadBytes ?? 25 * 1024 * 1024,
   });
   const app = createApp({ deps });
 
@@ -67,8 +73,8 @@ export function buildTestApp(
 
   async function call(path: string, init: CallInit = {}): Promise<TestResponse> {
     const headers = new Headers(init.headers);
-    if (init.body !== undefined && !headers.has("content-type")) {
-      headers.set("content-type", "application/json");
+    if (typeof init.body === "string" && !headers.has("content-type")) {
+      headers.set("content-type", "application/json"); // FormData sets its own boundary
     }
     if (init.auth && cookie !== "") headers.set("cookie", `mt_session_dev=${cookie}`);
     if (init.origin !== undefined) headers.set("origin", init.origin);
@@ -105,7 +111,10 @@ export function buildTestApp(
       const login = await this.login(password);
       if (!login.ok) throw new Error(`login failed: ${login.status}`);
     },
-    close: () => handle.sqlite.close(),
+    close: () => {
+      handle.sqlite.close();
+      rmSync(filesDir, { recursive: true, force: true });
+    },
   };
 }
 

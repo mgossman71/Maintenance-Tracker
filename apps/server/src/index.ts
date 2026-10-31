@@ -7,6 +7,7 @@ import { loadConfig } from "./config.ts";
 const config = loadConfig();
 
 mkdirSync(config.dataDir, { recursive: true, mode: 0o700 });
+mkdirSync(config.filesDir, { recursive: true, mode: 0o700 }); // uploads live here (§6.8)
 const { db } = openDatabase(config.dbPath);
 runMigrations(db); // every startup migrates
 
@@ -19,6 +20,8 @@ const deps = makeDeps(db, {
   guard: new LoginGuard(),
   trustProxy: config.trustProxy,
   tz: config.tz,
+  filesDir: config.filesDir,
+  maxUploadBytes: config.maxUploadBytes,
 });
 deleteExpiredSessions(db, new Date().toISOString());
 

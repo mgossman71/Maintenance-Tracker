@@ -227,10 +227,85 @@ export function deleteIntervention(db: Db, id: string): void {
   db.delete(intervention).where(eq(intervention.id, id)).run();
 }
 
-// ---- attachments (metadata; bytes land in M6) -----------------------------------
+// ---- attachments (metadata; bytes live in DATA_DIR/files, §6.8) -------------------
 
-export function getAttachment(db: Db, id: string): typeof attachment.$inferSelect | null {
+export function getAttachment(db: Db, id: string): AttachmentRow | null {
   return db.select().from(attachment).where(eq(attachment.id, id)).get() ?? null;
+}
+
+export type AttachmentRow = typeof attachment.$inferSelect;
+
+export function listAttachmentsForEquipment(db: Db, equipmentId: string): AttachmentRow[] {
+  return db
+    .select()
+    .from(attachment)
+    .where(eq(attachment.equipmentId, equipmentId))
+    .all()
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export function listAttachmentsForIntervention(db: Db, interventionId: string): AttachmentRow[] {
+  return db.select().from(attachment).where(eq(attachment.interventionId, interventionId)).all();
+}
+
+export function insertAttachment(
+  db: Db,
+  data: {
+    equipmentId: string;
+    interventionId: string | null;
+    filename: string;
+    storedName: string;
+    mimeType: string;
+    sizeBytes: number;
+  },
+): AttachmentRow {
+  const row = { id: randomUUID(), ...data };
+  db.insert(attachment).values(row).run();
+  const created = getAttachment(db, row.id);
+  if (created === null) throw new Error("insert failed to persist attachment");
+  return created;
+}
+
+export function deleteAttachment(db: Db, id: string): void {
+  db.delete(attachment).where(eq(attachment.id, id)).run();
+}
+
+// ---- cascade recalculation (intervention edit/delete, build-plan §2/§4) ----------
+
+/**
+ * When the intervention that LAST advanced the meter is edited away or
+ * deleted, roll the equipment reading back to the highest remaining
+ * recorded meterAt (or null). Callers invoke this only when the touched
+ * row's meterAt equaled the equipment's current reading — an explicit
+ * reading taken after the work is intentionally kept (the UI's correct-
+ * reading flow remains the escape hatch for anything else).
+ */
+export function recalcMeterFromInterventions(db: Db, equipmentId: string): void {
+  const eq = getEquipment(db, equipmentId);
+  if (eq === null) return;
+  const withMeter = listInterventionsForEquipment(db, equipmentId).filter(
+    (i) => i.meterAt !== null,
+  );
+  withMeter.sort(
+    (a, b) => (a.meterAt as number) - (b.meterAt as number) || a.date.localeCompare(b.date),
+  );
+  const top = withMeter[withMeter.length - 1];
+  updateEquipment(db, equipmentId, {
+    reading: top?.meterAt ?? null,
+    readingUpdatedAt: top?.date ?? null,
+  });
+}
+
+/** Expiry tasks: currentExpiryDate = the latest expiry recorded by its work. */
+export function recalcTaskExpiry(db: Db, taskId: string): void {
+  const rows = db.select().from(intervention).where(eq(intervention.taskId, taskId)).all();
+  const dates = rows
+    .map((i) => i.expiryDate)
+    .filter((d): d is string => d !== null)
+    .sort();
+  updateTask(db, taskId, {
+    currentExpiryDate: dates.length > 0 ? (dates[dates.length - 1] as string) : null,
+  });
 }
 
 // ---- task presets (the editable task library) -------------------------------------
