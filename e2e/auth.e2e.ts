@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { PASSWORD } from "./helpers";
 
 /**
  * M3 happy paths on ONE vault (single-user app), narrative order:
@@ -8,7 +9,6 @@ import { expect, test } from "@playwright/test";
  * session (storageState) and the authenticated suite inherits it.
  */
 
-const PASSWORD = "correct-horse-battery";
 const STATE = "/tmp/mt-e2e-state.json";
 
 test("first run: setup screen, guards, then straight into the shell", async ({ page, context }) => {
@@ -52,7 +52,8 @@ test.describe("authenticated", () => {
     await page.getByRole("link", { name: "Equipment", exact: true }).click();
     await expect(page.getByTestId("equipment-page")).toBeVisible();
     await expect(page.getByText("No equipment yet")).toBeVisible();
-    await expect(page.getByTestId("add-equipment-button")).toBeDisabled();
+    // real from M4 on: the button opens the create dialog
+    await expect(page.getByTestId("add-equipment-button")).toBeEnabled();
 
     await page.getByRole("link", { name: "Settings", exact: true }).click();
     await expect(page.getByTestId("settings-page")).toBeVisible();

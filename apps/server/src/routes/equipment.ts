@@ -139,9 +139,10 @@ export function equipmentRoutes(deps: AppDeps) {
     if (!parsed.success) return failValidation(c, parsed.error);
 
     if (eq.meterKind === "none") return fail(c, "meterless_equipment", 409);
-    if (eq.reading !== null && parsed.data.reading < eq.reading) {
+    const regressed = eq.reading !== null && parsed.data.reading < eq.reading;
+    if (regressed && parsed.data.correct !== true) {
       return fail(c, "meter_regressed", 409, {
-        message: `reading cannot go below current ${eq.reading}`,
+        message: `reading cannot go below current ${eq.reading} without correct: true`,
       });
     }
     const updated = updateEquipment(db, eq.id, {

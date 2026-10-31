@@ -45,6 +45,10 @@ security designed around the real deployment from day one.
   Every meter flow carries over: update reading, "same reading" dismissal,
   reading-never-lowers-silently, explicit "correct reading", and mileage
   progression via interventions.
+  (M4 contract: `POST /api/equipment/:id/reading` — equal value = the "same
+  reading" dismissal, which refreshes the reading date; a *lower* value is
+  rejected `meter_regressed` unless the request explicitly sends
+  `correct: true`, which the UI only does behind a confirmation step.)
 - **Task name is a picker.** "Add task" opens a combobox over the **task
   library** (editable, seeded with car/boat/home starters, each preset
   carrying default intervals — e.g. *Oil change: 5,000 mi / 12 mo*,

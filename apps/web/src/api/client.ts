@@ -41,14 +41,31 @@ export interface SessionInfo {
   lastSeenAt: string;
 }
 
+export type MeterKind = "none" | "hours" | "miles";
+
 export interface EquipmentRow {
   id: string;
   name: string;
   description: string | null;
   icon: string;
-  meterKind: "none" | "hours" | "miles";
+  meterKind: MeterKind;
   reading: number | null;
   readingUpdatedAt: string | null;
+  createdAt: string;
+}
+
+export interface EquipmentCreateInput {
+  name: string;
+  description?: string | null;
+  icon?: string;
+  meterKind?: MeterKind;
+}
+
+export interface EquipmentUpdateInput {
+  name?: string;
+  description?: string | null;
+  icon?: string;
+  meterKind?: MeterKind;
 }
 
 export const api = {
@@ -63,5 +80,25 @@ export const api = {
     request<void>("/api/auth/password", { method: "POST", body: { currentPassword, newPassword } }),
   equipment: {
     list: () => request<EquipmentRow[]>("/api/equipment"),
+    get: (id: string) => request<EquipmentRow>(`/api/equipment/${id}`),
+    create: (input: EquipmentCreateInput) =>
+      request<EquipmentRow>("/api/equipment", { method: "POST", body: input }),
+    update: (id: string, patch: EquipmentUpdateInput) =>
+      request<EquipmentRow>(`/api/equipment/${id}`, { method: "PATCH", body: patch }),
+    remove: (id: string) => request<void>(`/api/equipment/${id}`, { method: "DELETE" }),
+    /**
+     * Meter flows, one endpoint (§2): higher or equal = normal update,
+     * equal = "same reading" dismissal, lower REQUIRES `correct: true` —
+     * the explicit acknowledgment that the old value was a typo.
+     */
+    setReading: (id: string, reading: number, opts?: { date?: string; correct?: boolean }) =>
+      request<EquipmentRow>(`/api/equipment/${id}/reading`, {
+        method: "POST",
+        body: {
+          reading,
+          ...(opts?.date ? { date: opts.date } : {}),
+          ...(opts?.correct ? { correct: true } : {}),
+        },
+      }),
   },
 };

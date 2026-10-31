@@ -94,6 +94,13 @@ export type EquipmentUpdate = z.infer<typeof equipmentUpdateSchema>;
 export const readingUpdateSchema = z.strictObject({
   reading: z.number().nonnegative(),
   date: isoDateSchema.optional(),
+  /**
+   * Explicit "correct reading" acknowledgment (§2): a reading that LOWERS
+   * the current one is rejected with meter_regressed unless this is true.
+   * The UI must force the user into this branch deliberately — the meter
+   * never lowers *silently*.
+   */
+  correct: z.boolean().optional(),
 });
 export type ReadingUpdate = z.infer<typeof readingUpdateSchema>;
 

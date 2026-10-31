@@ -22,7 +22,6 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  globalSetup: "./e2e/global-setup.ts",
   webServer: {
     command: "bun apps/server/src/index.ts",
     cwd: process.cwd(),
@@ -34,7 +33,8 @@ export default defineConfig({
       MT_ARGON2_PRESET: "test",
       TZ: "UTC",
     },
-    reuseExistingServer: !process.env.CI,
+    // e2e/reset.ts guarantees the port is free and the vault empty
+    reuseExistingServer: false,
     stdout: "ignore",
     stderr: "pipe",
   },

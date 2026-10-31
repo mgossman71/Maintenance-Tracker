@@ -128,6 +128,61 @@ describe("meter readings (§2: never lower silently)", () => {
     expect(meterless.status).toBe(409);
     expect((await errorOf(meterless)).code).toBe("meterless_equipment");
   });
+
+  test("explicit correct:true is the ONLY way a reading lowers", async () => {
+    const eq = await makeEquipment(t, { name: "Clerk's Truck", meterKind: "miles" });
+    await t.call(`/api/equipment/${eq.id}/reading`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ reading: 50_000, date: "2026-06-10" }),
+    });
+
+    // typo discovery: 50000 was entered for 5000 — explicit correction lands
+    const corrected = await t.call(`/api/equipment/${eq.id}/reading`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ reading: 5_000, date: "2026-06-10", correct: true }),
+    });
+    expect(corrected.status).toBe(200);
+    expect(await corrected.json()).toMatchObject({
+      reading: 5_000,
+      readingUpdatedAt: "2026-06-10",
+    });
+
+    // correct:true is ignored when the reading does not regress
+    const raised = await t.call(`/api/equipment/${eq.id}/reading`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ reading: 5_100, correct: true }),
+    });
+    expect(raised.status).toBe(200);
+
+    // …and without the flag, lowering is still rejected (the rule is intact)
+    const sneaky = await t.call(`/api/equipment/${eq.id}/reading`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ reading: 1 }),
+    });
+    expect(sneaky.status).toBe(409);
+    expect((await errorOf(sneaky)).code).toBe("meter_regressed");
+
+    // corrections cannot go negative (schema), and meterless stays meterless
+    const negative = await t.call(`/api/equipment/${eq.id}/reading`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ reading: -1, correct: true }),
+    });
+    expect(negative.status).toBe(400);
+
+    const boiler = await makeEquipment(t, { name: "Boiler" });
+    const meterlessCorrect = await t.call(`/api/equipment/${boiler.id}/reading`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ reading: 1, correct: true }),
+    });
+    expect(meterlessCorrect.status).toBe(409);
+    expect((await errorOf(meterlessCorrect)).code).toBe("meterless_equipment");
+  });
 });
 
 describe("tasks + engine through HTTP", () => {

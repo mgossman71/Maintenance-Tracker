@@ -12,8 +12,9 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthIndexRouteImport } from './routes/_auth/index'
-import { Route as AuthEquipmentRouteImport } from './routes/_auth/equipment'
 import { Route as AuthSettingsRouteImport } from './routes/_auth/settings'
+import { Route as AuthEquipmentIndexRouteImport } from './routes/_auth/equipment/index'
+import { Route as AuthEquipmentIdRouteImport } from './routes/_auth/equipment/$id'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/_auth',
@@ -29,49 +30,58 @@ const AuthIndexRoute = AuthIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthRoute,
 } as any)
-const AuthEquipmentRoute = AuthEquipmentRouteImport.update({
-  id: '/equipment',
-  path: '/equipment',
-  getParentRoute: () => AuthRoute,
-} as any)
 const AuthSettingsRoute = AuthSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthEquipmentIndexRoute = AuthEquipmentIndexRouteImport.update({
+  id: '/equipment/',
+  path: '/equipment/',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthEquipmentIdRoute = AuthEquipmentIdRouteImport.update({
+  id: '/equipment/$id',
+  path: '/equipment/$id',
   getParentRoute: () => AuthRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthIndexRoute
   '/login': typeof LoginRoute
-  '/equipment': typeof AuthEquipmentRoute
   '/settings': typeof AuthSettingsRoute
+  '/equipment/$id': typeof AuthEquipmentIdRoute
+  '/equipment/': typeof AuthEquipmentIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
-  '/equipment': typeof AuthEquipmentRoute
   '/settings': typeof AuthSettingsRoute
   '/': typeof AuthIndexRoute
+  '/equipment/$id': typeof AuthEquipmentIdRoute
+  '/equipment': typeof AuthEquipmentIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_auth': typeof AuthRouteWithChildren
   '/login': typeof LoginRoute
-  '/_auth/equipment': typeof AuthEquipmentRoute
   '/_auth/settings': typeof AuthSettingsRoute
   '/_auth/': typeof AuthIndexRoute
+  '/_auth/equipment/$id': typeof AuthEquipmentIdRoute
+  '/_auth/equipment/': typeof AuthEquipmentIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/equipment' | '/settings'
+  fullPaths: '/' | '/login' | '/settings' | '/equipment/$id' | '/equipment/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/equipment' | '/settings' | '/'
+  to: '/login' | '/settings' | '/' | '/equipment/$id' | '/equipment'
   id:
     | '__root__'
     | '/_auth'
     | '/login'
-    | '/_auth/equipment'
     | '/_auth/settings'
     | '/_auth/'
+    | '/_auth/equipment/$id'
+    | '/_auth/equipment/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -102,13 +112,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthIndexRouteImport
       parentRoute: typeof AuthRoute
     }
-    '/_auth/equipment': {
-      id: '/_auth/equipment'
-      path: '/equipment'
-      fullPath: '/equipment'
-      preLoaderRoute: typeof AuthEquipmentRouteImport
-      parentRoute: typeof AuthRoute
-    }
     '/_auth/settings': {
       id: '/_auth/settings'
       path: '/settings'
@@ -116,19 +119,35 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthSettingsRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/equipment/': {
+      id: '/_auth/equipment/'
+      path: '/equipment'
+      fullPath: '/equipment/'
+      preLoaderRoute: typeof AuthEquipmentIndexRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/equipment/$id': {
+      id: '/_auth/equipment/$id'
+      path: '/equipment/$id'
+      fullPath: '/equipment/$id'
+      preLoaderRoute: typeof AuthEquipmentIdRouteImport
+      parentRoute: typeof AuthRoute
+    }
   }
 }
 
 interface AuthRouteChildren {
-  AuthEquipmentRoute: typeof AuthEquipmentRoute
   AuthSettingsRoute: typeof AuthSettingsRoute
   AuthIndexRoute: typeof AuthIndexRoute
+  AuthEquipmentIdRoute: typeof AuthEquipmentIdRoute
+  AuthEquipmentIndexRoute: typeof AuthEquipmentIndexRoute
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
-  AuthEquipmentRoute: AuthEquipmentRoute,
   AuthSettingsRoute: AuthSettingsRoute,
   AuthIndexRoute: AuthIndexRoute,
+  AuthEquipmentIdRoute: AuthEquipmentIdRoute,
+  AuthEquipmentIndexRoute: AuthEquipmentIndexRoute,
 }
 
 const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
