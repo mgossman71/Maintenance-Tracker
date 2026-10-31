@@ -21,8 +21,8 @@ export interface EquipmentFormValues {
 
 const METER_KINDS: { value: MeterKind; label: string }[] = [
   { value: "none", label: "No meter — time-based only (house, boiler)" },
-  { value: "miles", label: "Miles — cars, trucks, mowers" },
-  { value: "hours", label: "Hours — engines, machines, boats" },
+  { value: "miles", label: "Miles — cars, trucks, SUVs" },
+  { value: "hours", label: "Hours — mowers, engines, machines, boats" },
 ];
 
 /** Icons offered on the dropdown — one per kind of thing people own. */
