@@ -88,6 +88,8 @@ function expiryDue(task: EngineTask, today: string): TaskDue {
       nextDueMeter: null,
       remainingDays: null,
       remainingMeter: null,
+      elapsedDays: null,
+      elapsedMeter: null,
       reasons: ["no_expiry_date"],
     };
   }
@@ -101,6 +103,8 @@ function expiryDue(task: EngineTask, today: string): TaskDue {
     nextDueMeter: null,
     remainingDays: remaining,
     remainingMeter: null,
+    elapsedDays: null,
+    elapsedMeter: null,
     reasons: [
       status === "overdue"
         ? "expiry_overdue"
@@ -127,6 +131,8 @@ function intervalDue(
   let remainingDays: number | null = null;
   let nextDueMeter: number | null = null;
   let remainingMeter: number | null = null;
+  let elapsedDays: number | null = null;
+  let elapsedMeter: number | null = null;
 
   // ---- months component ----
   if (task.monthsInterval !== null) {
@@ -135,6 +141,7 @@ function intervalDue(
     const baseline = last?.date ?? task.createdAt;
     nextDueDate = addCalendarMonths(baseline, task.monthsInterval);
     remainingDays = daysBetween(today, nextDueDate);
+    elapsedDays = daysBetween(baseline, today);
     if (remainingDays <= 0) {
       status = worst(status, "overdue");
       reasons.push("months_overdue");
@@ -176,6 +183,7 @@ function intervalDue(
         const baselineMeter = lastMeter?.meter ?? task.baselineMeter ?? equipment.reading;
         nextDueMeter = baselineMeter + task.meterInterval;
         remainingMeter = nextDueMeter - equipment.reading;
+        elapsedMeter = equipment.reading - baselineMeter;
         if (remainingMeter <= 0) {
           status = worst(status, "overdue");
           reasons.push("meter_overdue");
@@ -197,6 +205,8 @@ function intervalDue(
     nextDueMeter,
     remainingDays,
     remainingMeter,
+    elapsedDays,
+    elapsedMeter,
     reasons,
   };
 }

@@ -8,7 +8,12 @@ import { EquipmentForm, type EquipmentFormValues } from "@/components/equipment-
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmDialog, Dialog } from "@/components/ui/dialog";
-import { equipmentDisplayName, useEquipment, useEquipmentMutations } from "@/hooks/use-equipment";
+import {
+  equipmentDisplayName,
+  useEquipment,
+  useEquipmentMutations,
+  useEquipmentSaver,
+} from "@/hooks/use-equipment";
 import { daysAgo, formatReading } from "@/lib/format";
 import { useTitle } from "@/lib/use-title";
 
@@ -70,12 +75,7 @@ function EquipmentRowCard({ equipment: eq }: { equipment: EquipmentRow }) {
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const mutations = useEquipmentMutations();
-
-  function save(values: EquipmentFormValues) {
-    const { serviceInterval: _si, ...patch } = values;
-    mutations.update.mutate({ id: eq.id, patch });
-    setEditing(false);
-  }
+  const saver = useEquipmentSaver(eq, () => setEditing(false));
 
   return (
     <>
@@ -114,10 +114,9 @@ function EquipmentRowCard({ equipment: eq }: { equipment: EquipmentRow }) {
       <Dialog open={editing} onClose={() => setEditing(false)} title="Edit equipment">
         <EquipmentForm
           equipment={eq}
-          meterKindLocked={eq.reading !== null}
-          busy={mutations.update.isPending}
-          error={mutations.update.error}
-          onSubmit={save}
+          busy={saver.busy}
+          error={saver.error}
+          onSubmit={(values) => void saver.save(values)}
           onCancel={() => setEditing(false)}
           testIdPrefix="edit"
         />

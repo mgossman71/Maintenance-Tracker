@@ -78,13 +78,25 @@ test.describe("equipment CRUD + meters", () => {
     await expect(page.getByTestId("meter-current")).toContainText("1,300 mi");
   });
 
-  test("meter kind locks once readings exist", async ({ page }) => {
+  test("meter kind switches with an explicit confirmation once readings exist", async ({
+    page,
+  }) => {
     await page.goto("/equipment");
     await page.getByRole("link", { name: /Daily Driver/ }).click();
 
     await page.getByTestId("edit-open").click();
-    await expect(page.getByTestId("edit-meter")).toBeDisabled();
-    await expect(page.getByText("Locked at miles — readings already exist")).toBeVisible();
+    await page.getByTestId("edit-meter").selectOption("hours");
+    await page.getByTestId("edit-submit").click(); // first commit only warns
+    await expect(page.getByTestId("edit-kind-warning")).toBeVisible();
+    await expect(page.getByTestId("edit-submit")).toBeVisible(); // dialog still open
+
+    await page.getByTestId("edit-submit").click(); // confirmed — saved
+    await expect(page.getByTestId("edit-kind-warning")).toBeHidden();
+
+    // the switch stuck: reopened, the unit reads hours — and the odometer
+    // followed the number into the new unit untouched
+    await page.getByTestId("edit-open").click();
+    await expect(page.getByTestId("edit-meter")).toHaveValue("hours");
     await page.getByTestId("edit-cancel").click();
   });
 
@@ -143,6 +155,17 @@ test.describe("equipment CRUD + meters", () => {
     await page.getByTestId("reading-submit").click();
     await page.getByTestId("tab-tasks").click();
     await expect(serviceRow).toContainText("due at 5,000");
+
+    // and the equipment form itself edits the maintenance interval:
+    // 5,000 → 6,000 moves the due point, no Tasks tab required
+    await page.getByTestId("tab-info").click();
+    await page.getByTestId("edit-open").click();
+    await expect(page.getByTestId("edit-interval")).toHaveValue("5000");
+    await page.getByTestId("edit-interval").fill("6000");
+    await page.getByTestId("edit-submit").click();
+    await expect(page.getByTestId("edit-submit")).toBeHidden(); // dialog closed on save
+    await page.getByTestId("tab-tasks").click();
+    await expect(serviceRow).toContainText("due at 6,000");
 
     // clean up the shared vault
     await page.getByTestId("tab-info").click();

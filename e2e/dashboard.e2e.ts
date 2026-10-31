@@ -97,11 +97,12 @@ test.describe("dashboard", () => {
     await page.getByTestId("reading-input").fill("600");
     await page.getByTestId("reading-submit").click();
 
-    // the dashboard row states the interval AND the miles to go, plainly
+    // the dashboard row states all three numbers, in plain words
     await page.goto("/");
     const block = page.getByTestId(`dash-block-${await blockIdFor(page, "Trail Bike")}`);
     const row = block.locator("li").filter({ hasText: "Service" });
     await expect(row).toContainText("every 12 mo or 1,000 mi");
+    await expect(row).toContainText("600 mi since last service");
     await expect(row).toContainText("due in 400 mi");
 
     // change the maintenance interval right from the dashboard: 1,000 → 1,200
@@ -111,6 +112,7 @@ test.describe("dashboard", () => {
     await page.getByTestId("dash-edit-task-submit").click();
 
     await expect(row).toContainText("every 12 mo or 1,200 mi");
+    await expect(row).toContainText("600 mi since last service");
     await expect(row).toContainText("due in 600 mi");
 
     // self-clean: later specs assume an empty vault (dialog-scoped: other

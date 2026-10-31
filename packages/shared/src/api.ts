@@ -20,7 +20,6 @@ export const errorCodes = [
   "meter_regressed",
   "meterless_equipment",
   "task_equipment_mismatch",
-  "meter_kind_immutable",
   "unsupported_media",
   "payload_too_large",
   "baseline_anchored_by_history", // editing a baseline the recorded work already owns
@@ -92,7 +91,7 @@ export const equipmentUpdateSchema = z.strictObject({
   description: z.string().max(2000).nullish(),
   icon: z.string().max(16).optional(),
   year: z.number().int().min(1900).max(2100).nullish(),
-  /** Rejected with meter_kind_immutable once any reading exists (§4). */
+  /** Always editable; the edit form confirms unit switches with readings. */
   meterKind: meterKindSchema.optional(),
 });
 export type EquipmentUpdate = z.infer<typeof equipmentUpdateSchema>;
@@ -254,6 +253,8 @@ export const dueStatusInfoSchema = z.strictObject({
   nextDueMeter: z.number().nullable(),
   remainingDays: z.number().nullable(),
   remainingMeter: z.number().nullable(),
+  elapsedDays: z.number().nullable(),
+  elapsedMeter: z.number().nullable(),
   reasons: z.array(dueReasonSchema),
 });
 export type DueStatusInfo = z.infer<typeof dueStatusInfoSchema>;

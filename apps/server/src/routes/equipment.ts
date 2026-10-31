@@ -120,15 +120,8 @@ export function equipmentRoutes(deps: AppDeps) {
     if (icon !== undefined) patch.icon = icon;
     if (year !== undefined) patch.year = year ?? null;
     if (meterKind !== undefined && meterKind !== eq.meterKind) {
-      // §4: meter kind is immutable once readings exist.
-      const hasReadings =
-        eq.reading !== null ||
-        listInterventionsForEquipment(db, eq.id).some((i) => i.meterAt !== null);
-      if (hasReadings) {
-        return fail(c, "meter_kind_immutable", 409, {
-          message: "meter kind locked once readings exist",
-        });
-      }
+      // v0.2.5: units are the owner's call — the edit form asks for
+      // confirmation when readings exist; the numbers are kept as entered.
       patch.meterKind = meterKind;
     }
     return c.json(updateEquipment(db, eq.id, patch) ?? eq);

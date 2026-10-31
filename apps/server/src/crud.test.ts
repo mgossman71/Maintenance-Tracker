@@ -55,9 +55,8 @@ describe("equipment CRUD", () => {
     expect(bad3.status).toBe(400);
   });
 
-  test("meter kind is immutable once readings exist (§4)", async () => {
+  test("meter kind stays editable — units are the owner's call (v0.2.5)", async () => {
     const eq = await makeEquipment(t, { name: "Sailboat", meterKind: "hours" });
-    // no readings yet → change allowed
     const ok = await t.call(`/api/equipment/${eq.id}`, {
       method: "PATCH",
       auth: true,
@@ -70,13 +69,18 @@ describe("equipment CRUD", () => {
       auth: true,
       body: JSON.stringify({ reading: 12.5 }),
     });
-    const locked = await t.call(`/api/equipment/${eq.id}`, {
+    // readings exist: the switch still applies (the edit form confirms it
+    // client-side; the server trusts the confirmed owner)
+    const switched = await t.call(`/api/equipment/${eq.id}`, {
       method: "PATCH",
       auth: true,
       body: JSON.stringify({ meterKind: "hours" }),
     });
-    expect(locked.status).toBe(409);
-    expect((await errorOf(locked)).code).toBe("meter_kind_immutable");
+    expect(switched.status).toBe(200);
+    expect(((await switched.json()) as { meterKind: string }).meterKind).toBe("hours");
+    // the reading itself is untouched — same number, new unit
+    const after = await (await t.call(`/api/equipment/${eq.id}`, { auth: true })).json();
+    expect(after.reading).toBe(12.5);
   });
 });
 

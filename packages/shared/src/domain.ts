@@ -87,5 +87,12 @@ export interface TaskDue {
   remainingDays: number | null;
   /** Null when no meter component or unknown. */
   remainingMeter: number | null;
+  /**
+   * How much has been USED of the interval since the anchor (last service,
+   * or the baseline when never serviced) — what owners read as "600 miles
+   * since last service". Null when the anchor or meter is unknown.
+   */
+  elapsedDays: number | null;
+  elapsedMeter: number | null;
   reasons: DueReason[];
 }

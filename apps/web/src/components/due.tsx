@@ -25,10 +25,11 @@ export function DueChip({ status }: { status: TaskWithDue["due"]["status"] }) {
 const num = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 1 });
 
 /**
- * Dashboard language: the maintenance INTERVAL first, then how far away
- * the work is — "every 12 mo or 1,000 mi · due in 400 mi". Meter counts
- * speak in miles/hours (what owners ask); days only carry the message
- * when there is no meter component.
+ * Dashboard language, in the owner's words: the maintenance INTERVAL, how
+ * much has been USED since the last service (or the baseline when never
+ * serviced), and what is LEFT —
+ * "every 1,000 mi · 600 mi since last service · due in 400 mi".
+ * Meter counts speak in miles/hours; days only when there is no meter.
  */
 export function dashboardLine(task: TaskWithDue, unit: "mi" | "h" | null): string {
   const every: string[] = [];
@@ -37,19 +38,27 @@ export function dashboardLine(task: TaskWithDue, unit: "mi" | "h" | null): strin
     every.push(`${num(task.meterInterval)} ${unit}`);
 
   const r = task.due;
-  let due: string | null = null;
-  if (r.remainingMeter !== null && unit !== null) {
-    due =
-      r.remainingMeter <= 0
-        ? `overdue by ${num(Math.abs(r.remainingMeter))} ${unit}`
-        : `due in ${num(r.remainingMeter)} ${unit}`;
-  } else if (r.remainingDays !== null) {
-    due = r.remainingDays <= 0 ? `overdue since ${r.nextDueDate}` : `due in ${r.remainingDays} d`;
+  const parts: string[] = [];
+  if (unit !== null && (r.elapsedMeter !== null || r.remainingMeter !== null)) {
+    if (r.elapsedMeter !== null)
+      parts.push(`${num(Math.max(0, r.elapsedMeter))} ${unit} since last service`);
+    if (r.remainingMeter !== null)
+      parts.push(
+        r.remainingMeter <= 0
+          ? `${num(Math.abs(r.remainingMeter))} ${unit} over`
+          : `due in ${num(r.remainingMeter)} ${unit}`,
+      );
+  } else if (r.elapsedDays !== null || r.remainingDays !== null) {
+    if (r.elapsedDays !== null) parts.push(`${r.elapsedDays} d since last service`);
+    if (r.remainingDays !== null)
+      parts.push(
+        r.remainingDays <= 0 ? `overdue since ${r.nextDueDate}` : `due in ${r.remainingDays} d`,
+      );
   } else if (r.nextDueDate !== null) {
-    due = `due ${r.nextDueDate}`;
+    parts.push(`due ${r.nextDueDate}`);
   }
 
-  return [every.length > 0 ? `every ${every.join(" or ")}` : null, due]
+  return [every.length > 0 ? `every ${every.join(" or ")}` : null, ...parts]
     .filter((p): p is string => p !== null)
     .join(" · ");
 }

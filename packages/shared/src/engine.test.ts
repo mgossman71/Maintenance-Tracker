@@ -183,6 +183,7 @@ describe("no-history states anchor at the task's start", () => {
     const due = run(task({ monthsInterval: 6, createdAt: "2026-06-01" }), eq(), [], now);
     expect(due.status).toBe("ok");
     expect(due.nextDueDate).toBe("2026-12-01");
+    expect(due.elapsedDays).toBe(14); // counted from the anchor, in days
     expect(due.reasons).toContain("months_baseline_created");
   });
 
@@ -230,6 +231,7 @@ describe("no-history states anchor at the task's start", () => {
     expect(due.status).toBe("ok");
     expect(due.nextDueMeter).toBe(1000); // the point itself, not 1,600
     expect(due.remainingMeter).toBe(400);
+    expect(due.elapsedMeter).toBe(600); // 600 mi "since last service"
   });
 
   test("interval task from its baseline: 600 + 1000 → due at 1600", () => {

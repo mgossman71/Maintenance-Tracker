@@ -1,4 +1,3 @@
-import { Lock } from "lucide-react";
 import { useState } from "react";
 import { ApiError, type EquipmentRow, type MeterKind } from "@/api/client";
 import { Button } from "@/components/ui/button";
@@ -12,10 +11,11 @@ export interface EquipmentFormValues {
   year: number | null;
   meterKind: MeterKind;
   /**
-   * Create-mode shortcut: the METER POINT (odometer/hour-meter reading) at
-   * which the first service is due — NOT an interval. The parent turns it
-   * into a "Service" task counting from zero, due at that reading OR
-   * 12 months, whichever comes first.
+   * The maintenance interval, in the equipment's meter units.
+   * - Create: the METER POINT the first service is due at — the parent
+   *   makes a "Service" task counting from zero, due there OR in 12 months.
+   * - Edit: the recurring interval applied to the equipment's "Service"
+   *   task (the count restarts at each service). Blank = leave as it is.
    */
   serviceInterval?: number | null;
 }
@@ -70,13 +70,15 @@ const ICON_CHOICES = [
 
 /**
  * Create/edit equipment form. `equipment` present = edit.
- * `meterKindLocked`: the server refuses meter-kind changes once readings
- * exist (§4) — the select is disabled, with the reason shown, rather than
- * failing on submit.
+ * The form edits EVERYTHING about the equipment, including the maintenance
+ * interval (create: the first-service meter point; edit: the recurring
+ * interval of the equipment's "Service" task). The meter kind is always
+ * selectable; switching units once readings exist asks for confirmation —
+ * numbers are kept, only the unit they are read in changes.
  */
 export function EquipmentForm({
   equipment,
-  meterKindLocked,
+  serviceIntervalInitial,
   busy,
   error,
   onSubmit,
@@ -84,7 +86,8 @@ export function EquipmentForm({
   testIdPrefix,
 }: {
   equipment?: EquipmentRow;
-  meterKindLocked?: boolean;
+  /** Edit mode: the Service task's current interval, to prefill the field. */
+  serviceIntervalInitial?: number | null;
   busy?: boolean;
   error?: unknown;
   onSubmit: (values: EquipmentFormValues) => void;
@@ -99,13 +102,27 @@ export function EquipmentForm({
   const [year, setYear] = useState(equipment?.year?.toString() ?? "");
   const [description, setDescription] = useState(equipment?.description ?? "");
   const [meterKind, setMeterKind] = useState<MeterKind>(equipment?.meterKind ?? "none");
-  const [serviceInterval, setServiceInterval] = useState("");
+  const [serviceInterval, setServiceInterval] = useState(
+    serviceIntervalInitial != null ? String(serviceIntervalInitial) : "",
+  );
   const [touched, setTouched] = useState(false);
+  // a unit switch with readings on the clock needs a second, confirming submit
+  const [kindConfirmed, setKindConfirmed] = useState(false);
 
   const nameError = touched && name.trim() === "" ? "Name is required." : null;
   const unit = meterKind === "miles" ? "miles" : meterKind === "hours" ? "hours" : null;
   const intervalNum = serviceInterval === "" ? null : Number(serviceInterval);
   const badInterval = intervalNum !== null && !(intervalNum > 0);
+  const kindSwitch =
+    editing && equipment.reading !== null && meterKind !== equipment.meterKind
+      ? {
+          from:
+            equipment.meterKind === "none"
+              ? "no meter"
+              : METER_UNIT[equipment.meterKind as "miles" | "hours"],
+          to: unit ?? "no meter",
+        }
+      : null;
 
   // an existing icon that isn't in the curated list still gets shown
   const choices =
@@ -117,13 +134,18 @@ export function EquipmentForm({
     e.preventDefault();
     setTouched(true);
     if (name.trim() === "") return;
+    if (badInterval) return;
+    if (kindSwitch !== null && !kindConfirmed) {
+      setKindConfirmed(true); // first click warns; the second one commits
+      return;
+    }
     onSubmit({
       name: name.trim(),
       description: description.trim() === "" ? null : description.trim(),
       icon,
       year: year === "" ? null : Number(year),
       meterKind,
-      serviceInterval: !editing && unit !== null ? intervalNum : null,
+      serviceInterval: unit !== null ? intervalNum : null,
     });
   }
 
@@ -202,8 +224,11 @@ export function EquipmentForm({
         <select
           id={`${testIdPrefix}-meter`}
           value={meterKind}
-          disabled={meterKindLocked || busy}
-          onChange={(e) => setMeterKind((e.target.value ?? "none") as MeterKind)}
+          disabled={busy}
+          onChange={(e) => {
+            setMeterKind((e.target.value ?? "none") as MeterKind);
+            setKindConfirmed(false);
+          }}
           data-testid={`${testIdPrefix}-meter`}
           className={selectClass}
         >
@@ -213,18 +238,23 @@ export function EquipmentForm({
             </option>
           ))}
         </select>
-        {meterKindLocked && (
-          <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <Lock className="size-3.5" aria-hidden="true" />
-            Locked at{" "}
-            {equipment && equipment.meterKind !== "none" ? METER_UNIT[equipment.meterKind] : "none"}{" "}
-            — readings already exist for this equipment.
+        {kindSwitch !== null && kindConfirmed && (
+          <p
+            role="alert"
+            className="rounded-md border border-amber-300/60 bg-amber-50 p-2 text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-300"
+            data-testid={`${testIdPrefix}-kind-warning`}
+          >
+            This switches the unit from <strong>{kindSwitch.from}</strong> to{" "}
+            <strong>{kindSwitch.to}</strong>. Readings and history keep their numbers — they are
+            simply read as {kindSwitch.to}. Click <strong>Save changes</strong> again to confirm.
           </p>
         )}
-        {!editing && unit !== null && (
+        {unit !== null && (
           <div className="space-y-2 pt-1">
             <Label htmlFor={`${testIdPrefix}-interval`}>
-              Next service due at {unit === "miles" ? "mileage" : "hours"}
+              {editing
+                ? `Service every (${unit})`
+                : `Next service due at ${unit === "miles" ? "mileage" : "hours"}`}
             </Label>
             <div className="flex items-center gap-3">
               <Input
@@ -239,9 +269,19 @@ export function EquipmentForm({
                 data-testid={`${testIdPrefix}-interval`}
               />
               <p className="text-xs text-muted-foreground">
-                The meter point the service is due at — enter <strong>1000</strong> for “due at
-                1,000 miles.” Creates a “Service” task due then <em>or</em> in 12 months, whichever
-                comes first. Recurring intervals live on tasks in the Tasks tab.
+                {editing ? (
+                  <>
+                    The maintenance interval on the “Service” task — the count restarts at every
+                    service. Leave blank to leave it untouched; other tasks keep their own intervals
+                    in the Tasks tab.
+                  </>
+                ) : (
+                  <>
+                    The meter point the service is due at — enter <strong>1000</strong> for “due at
+                    1,000 miles.” Creates a “Service” task due then <em>or</em> in 12 months,
+                    whichever comes first.
+                  </>
+                )}
               </p>
             </div>
             {badInterval && (
@@ -254,10 +294,9 @@ export function EquipmentForm({
             )}
           </div>
         )}
-        {editing && (
+        {meterKind === "none" && (
           <p className="text-sm text-muted-foreground">
-            The unit this equipment counts services in. Intervals live on each task — set them in
-            the Tasks tab.
+            No meter: this equipment is tracked by time alone.
           </p>
         )}
       </div>
@@ -295,10 +334,7 @@ export function yearChoices(): number[] {
 /** Server error surfaced under the form; parent passes its mutation error. */
 export function FormError({ error }: { error: unknown }) {
   if (!(error instanceof ApiError)) return null;
-  const message =
-    error.code === "meter_kind_immutable"
-      ? "The meter kind was locked once readings were recorded."
-      : (error.details?.[0]?.message ?? error.code);
+  const message = error.details?.[0]?.message ?? error.code;
   return (
     <p role="alert" className="text-sm text-destructive" data-testid="form-error">
       {message}

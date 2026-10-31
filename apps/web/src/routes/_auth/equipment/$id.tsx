@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ApiError, type EquipmentRow } from "@/api/client";
 import { DocumentsPane } from "@/components/documents-pane";
 import { PageError } from "@/components/empty-state";
-import { EquipmentForm, type EquipmentFormValues } from "@/components/equipment-form";
+import { EquipmentForm } from "@/components/equipment-form";
 import { HistoryPane } from "@/components/history-pane";
 import { TasksPane } from "@/components/tasks-pane";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,9 @@ import {
   equipmentDisplayName,
   useEquipmentById,
   useEquipmentMutations,
+  useEquipmentSaver,
 } from "@/hooks/use-equipment";
+import { useEquipmentTasks } from "@/hooks/use-tasks";
 import { daysAgo, formatReading, METER_UNIT } from "@/lib/format";
 import { useTitle } from "@/lib/use-title";
 import { cn } from "@/lib/utils";
@@ -102,21 +104,11 @@ function InfoPane({ eq }: { eq: EquipmentRow }) {
   const [deleting, setDeleting] = useState(false);
   const navigate = useNavigate();
   const mutations = useEquipmentMutations();
-
-  function save(values: EquipmentFormValues) {
-    const { serviceInterval: _si, ...patch } = values;
-    mutations.update.mutate(
-      { id: eq.id, patch },
-      {
-        onSuccess: () => setEditing(false),
-        onError: (err) => {
-          // meter_kind_immutable means a reading landed while the dialog was
-          // open — close it so the lock state refreshes from the server.
-          if (err instanceof ApiError && err.code === "meter_kind_immutable") setEditing(false);
-        },
-      },
-    );
-  }
+  // the "Service every (…)" field prefills from the equipment's Service task
+  const tasks = useEquipmentTasks(eq.id);
+  const serviceTask =
+    tasks.data?.find((t) => t.name === "Service" && t.meterInterval !== null) ?? null;
+  const saver = useEquipmentSaver(eq, () => setEditing(false));
 
   return (
     <div className="space-y-4">
@@ -167,10 +159,10 @@ function InfoPane({ eq }: { eq: EquipmentRow }) {
       <Dialog open={editing} onClose={() => setEditing(false)} title="Edit equipment">
         <EquipmentForm
           equipment={eq}
-          meterKindLocked={eq.reading !== null}
-          busy={mutations.update.isPending}
-          error={mutations.update.error}
-          onSubmit={save}
+          serviceIntervalInitial={serviceTask?.meterInterval ?? null}
+          busy={saver.busy}
+          error={saver.error}
+          onSubmit={(values) => void saver.save(values)}
           onCancel={() => setEditing(false)}
           testIdPrefix="edit"
         />
