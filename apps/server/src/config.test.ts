@@ -33,4 +33,26 @@ describe("loadConfig", () => {
     expect(loadConfig({}).webDir).toEndWith("/apps/web/dist");
     expect(loadConfig({ MT_WEB_DIR: "/tmp/web" }).webDir).toBe("/tmp/web");
   });
+
+  test("session + cookie knobs (§6.2/§6.6)", () => {
+    const d = loadConfig({});
+    expect(d.tz).toBe("UTC");
+    expect(d.sessionIdleMs).toBe(30 * 86_400_000);
+    expect(d.sessionAbsoluteMs).toBe(90 * 86_400_000);
+    expect(d.insecureCookies).toBe(false);
+
+    const tuned = loadConfig({
+      MT_SESSION_IDLE_DAYS: "7",
+      MT_SESSION_ABSOLUTE_DAYS: "30",
+      MT_INSECURE_COOKIES: "1",
+      TZ: "America/Detroit",
+    });
+    expect(tuned.sessionIdleMs).toBe(7 * 86_400_000);
+    expect(tuned.sessionAbsoluteMs).toBe(30 * 86_400_000);
+    expect(tuned.insecureCookies).toBe(true);
+    expect(tuned.tz).toBe("America/Detroit");
+
+    expect(() => loadConfig({ MT_SESSION_IDLE_DAYS: "0" })).toThrow(ZodError);
+    expect(() => loadConfig({ MT_SESSION_IDLE_DAYS: "400" })).toThrow(ZodError);
+  });
 });

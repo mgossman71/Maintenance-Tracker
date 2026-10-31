@@ -13,6 +13,12 @@ const EnvSchema = z.object({
   TZ: z.string().min(1).optional(),
   /** Override location of the built SPA (defaults to apps/web/dist). */
   MT_WEB_DIR: z.string().min(1).optional(),
+  /** Session idle window (§6.2), days. */
+  MT_SESSION_IDLE_DAYS: z.coerce.number().positive().max(365).default(30),
+  /** Session absolute cap regardless of activity (§6.2), days. */
+  MT_SESSION_ABSOLUTE_DAYS: z.coerce.number().positive().max(730).default(90),
+  /** Local dev over plain http: drop Secure/__Host- cookie traits (§6.6). */
+  MT_INSECURE_COOKIES: z.enum(["0", "1"]).default("0"),
 });
 
 export interface AppConfig {
@@ -20,15 +26,20 @@ export interface AppConfig {
   bind: string;
   dataDir: string;
   trustProxy: boolean;
-  tz: string | undefined;
+  tz: string;
   dbPath: string;
   webDir: string;
+  sessionIdleMs: number;
+  sessionAbsoluteMs: number;
+  insecureCookies: boolean;
 }
 
 /** Default built-web location: apps/web/dist relative to this package. */
 function defaultWebDir(): string {
   return fileURLToPath(new URL("../../web/dist", import.meta.url));
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): AppConfig {
   const parsed = EnvSchema.parse(env);
@@ -37,8 +48,11 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     bind: parsed.MT_BIND,
     dataDir: parsed.MT_DATA_DIR,
     trustProxy: parsed.MT_TRUST_PROXY === "1",
-    tz: parsed.TZ,
+    tz: parsed.TZ ?? "UTC",
     dbPath: `${parsed.MT_DATA_DIR.replace(/\/+$/, "")}/mt.db`,
     webDir: parsed.MT_WEB_DIR ?? defaultWebDir(),
+    sessionIdleMs: parsed.MT_SESSION_IDLE_DAYS * DAY_MS,
+    sessionAbsoluteMs: parsed.MT_SESSION_ABSOLUTE_DAYS * DAY_MS,
+    insecureCookies: parsed.MT_INSECURE_COOKIES === "1",
   };
 }

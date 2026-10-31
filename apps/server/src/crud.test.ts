@@ -1,0 +1,396 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { buildTestApp, errorOf, makeEquipment, type TestApp } from "./testkit.ts";
+
+describe("equipment CRUD", () => {
+  let t: TestApp;
+  beforeAll(async () => {
+    t = buildTestApp();
+    await t.setupAndLogin();
+  });
+  afterAll(() => t.close());
+
+  test("create → list → get → patch → delete", async () => {
+    const created = await makeEquipment(t, { icon: "🚗", meterKind: "miles" });
+    const list = await t.call("/api/equipment", { auth: true });
+    expect(((await list.json()) as unknown[]).length).toBe(1);
+
+    const got = await t.call(`/api/equipment/${created.id}`, { auth: true });
+    const row = await got.json();
+    expect(row).toMatchObject({ name: "Truck", icon: "🚗", meterKind: "miles", reading: null });
+
+    const patched = await t.call(`/api/equipment/${created.id}`, {
+      method: "PATCH",
+      auth: true,
+      body: JSON.stringify({ name: "Big Truck", icon: "🛻" }),
+    });
+    expect(await patched.json()).toMatchObject({ name: "Big Truck", icon: "🛻" });
+
+    const del = await t.call(`/api/equipment/${created.id}`, { method: "DELETE", auth: true });
+    expect(del.status).toBe(204);
+    expect((await t.call(`/api/equipment/${created.id}`, { auth: true })).status).toBe(404);
+  });
+
+  test("validation: missing name, unknown fields (strict), unknown meter kind", async () => {
+    const bad1 = await t.call("/api/equipment", {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({}),
+    });
+    expect(bad1.status).toBe(400);
+    expect((await errorOf(bad1)).details?.some((d) => d.path === "name")).toBeTrue();
+
+    const bad2 = await t.call("/api/equipment", {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ name: "x", isAdmin: true }),
+    });
+    expect(bad2.status).toBe(400); // strictObject → unknown keys rejected
+
+    const bad3 = await t.call("/api/equipment", {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ name: "x", meterKind: "furlongs" }),
+    });
+    expect(bad3.status).toBe(400);
+  });
+
+  test("meter kind is immutable once readings exist (§4)", async () => {
+    const eq = await makeEquipment(t, { name: "Sailboat", meterKind: "hours" });
+    // no readings yet → change allowed
+    const ok = await t.call(`/api/equipment/${eq.id}`, {
+      method: "PATCH",
+      auth: true,
+      body: JSON.stringify({ meterKind: "miles" }),
+    });
+    expect(ok.status).toBe(200);
+
+    await t.call(`/api/equipment/${eq.id}/reading`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ reading: 12.5 }),
+    });
+    const locked = await t.call(`/api/equipment/${eq.id}`, {
+      method: "PATCH",
+      auth: true,
+      body: JSON.stringify({ meterKind: "hours" }),
+    });
+    expect(locked.status).toBe(409);
+    expect((await errorOf(locked)).code).toBe("meter_kind_immutable");
+  });
+});
+
+describe("meter readings (§2: never lower silently)", () => {
+  let t: TestApp;
+  beforeAll(async () => {
+    t = buildTestApp();
+    await t.setupAndLogin();
+  });
+  afterAll(() => t.close());
+
+  test("set, raise, reject lowering, meterless rejected", async () => {
+    const eq = await makeEquipment(t, { meterKind: "miles" });
+    const first = await t.call(`/api/equipment/${eq.id}/reading`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ reading: 100 }),
+    });
+    expect(await first.json()).toMatchObject({ reading: 100, readingUpdatedAt: "2026-06-15" });
+
+    const raised = await t.call(`/api/equipment/${eq.id}/reading`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ reading: 150, date: "2026-06-20" }),
+    });
+    expect(await raised.json()).toMatchObject({ reading: 150, readingUpdatedAt: "2026-06-20" });
+
+    const lower = await t.call(`/api/equipment/${eq.id}/reading`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ reading: 149 }),
+    });
+    expect(lower.status).toBe(409);
+    expect((await errorOf(lower)).code).toBe("meter_regressed");
+
+    // equal reading is always acceptable ("same reading" dismissal is a no-op client-side)
+    const same = await t.call(`/api/equipment/${eq.id}/reading`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ reading: 150 }),
+    });
+    expect(same.status).toBe(200);
+
+    const house = await makeEquipment(t, { name: "House" });
+    const meterless = await t.call(`/api/equipment/${house.id}/reading`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ reading: 1 }),
+    });
+    expect(meterless.status).toBe(409);
+    expect((await errorOf(meterless)).code).toBe("meterless_equipment");
+  });
+});
+
+describe("tasks + engine through HTTP", () => {
+  let t: TestApp;
+  beforeAll(async () => {
+    t = buildTestApp();
+    await t.setupAndLogin();
+  });
+  afterAll(() => t.close());
+
+  test("interval task with no components rejected with a reason", async () => {
+    const eq = await makeEquipment(t);
+    const res = await t.call(`/api/equipment/${eq.id}/tasks`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ name: "x", kind: "interval" }),
+    });
+    expect(res.status).toBe(400);
+    expect((await errorOf(res)).details?.[0]?.path).toBe("monthsInterval");
+  });
+
+  test("meter interval requires metered equipment", async () => {
+    const eq = await makeEquipment(t, { name: "House" });
+    const res = await t.call(`/api/equipment/${eq.id}/tasks`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ name: "x", kind: "interval", meterInterval: 100 }),
+    });
+    expect(res.status).toBe(400);
+    expect((await errorOf(res)).details?.[0]?.path).toBe("meterInterval");
+  });
+
+  test("expiry task carrying intervals rejected", async () => {
+    const eq = await makeEquipment(t);
+    const res = await t.call(`/api/equipment/${eq.id}/tasks`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ name: "x", kind: "expiry", monthsInterval: 6 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("fresh months task → overdue (no_history); after intervention → computed by the shared engine", async () => {
+    const eq = await makeEquipment(t);
+    const task = await (
+      await t.call(`/api/equipment/${eq.id}/tasks`, {
+        method: "POST",
+        auth: true,
+        body: JSON.stringify({ name: "Wax", kind: "interval", monthsInterval: 6 }),
+      })
+    ).json();
+    expect(task.due.status).toBe("overdue");
+    expect(task.due.reasons).toContain("no_history"); // engine wired, "today" = 2026-06-15
+
+    await t.call(`/api/equipment/${eq.id}/interventions`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ taskId: task.id, date: "2026-01-15" }),
+    });
+
+    const tasks = await (await t.call(`/api/equipment/${eq.id}/tasks`, { auth: true })).json();
+    const due = tasks[0].due;
+    expect(due.nextDueDate).toBe("2026-07-15");
+    expect(due.status).toBe("ok"); // 30 days out, past the 19-day window
+    expect(due.remainingDays).toBe(30);
+  });
+
+  test("PATCH preserves invariants: strip last component → 400; expiry never gains intervals", async () => {
+    const eq = await makeEquipment(t, { meterKind: "miles" });
+    const task = await (
+      await t.call(`/api/equipment/${eq.id}/tasks`, {
+        method: "POST",
+        auth: true,
+        body: JSON.stringify({ name: "Tires", kind: "interval", monthsInterval: 12 }),
+      })
+    ).json();
+
+    const strip = await t.call(`/api/tasks/${task.id}`, {
+      method: "PATCH",
+      auth: true,
+      body: JSON.stringify({ monthsInterval: null }),
+    });
+    expect(strip.status).toBe(400);
+
+    const expiry = await (
+      await t.call(`/api/equipment/${eq.id}/tasks`, {
+        method: "POST",
+        auth: true,
+        body: JSON.stringify({
+          name: "Registration",
+          kind: "expiry",
+          currentExpiryDate: "2027-01-01",
+        }),
+      })
+    ).json();
+    const leaky = await t.call(`/api/tasks/${expiry.id}`, {
+      method: "PATCH",
+      auth: true,
+      body: JSON.stringify({ monthsInterval: 3 }),
+    });
+    expect(leaky.status).toBe(400);
+  });
+});
+
+describe("interventions + meter/expiry rules", () => {
+  let t: TestApp;
+  beforeAll(async () => {
+    t = buildTestApp();
+    await t.setupAndLogin();
+  });
+  afterAll(() => t.close());
+
+  test("task XOR label enforced at the API", async () => {
+    const eq = await makeEquipment(t, { name: "Everyday Car", meterKind: "miles" });
+    const neither = await t.call(`/api/equipment/${eq.id}/interventions`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ date: "2026-06-01" }),
+    });
+    expect(neither.status).toBe(400);
+
+    const task = await (
+      await t.call(`/api/equipment/${eq.id}/tasks`, {
+        method: "POST",
+        auth: true,
+        body: JSON.stringify({ name: "Oil", kind: "interval", monthsInterval: 6 }),
+      })
+    ).json();
+    const both = await t.call(`/api/equipment/${eq.id}/interventions`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ taskId: task.id, label: "belt-and-suspenders", date: "2026-06-01" }),
+    });
+    expect(both.status).toBe(400);
+
+    const ok = await t.call(`/api/equipment/${eq.id}/interventions`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ taskId: task.id, date: "2026-06-01" }),
+    });
+    expect(ok.status).toBe(201);
+  });
+
+  test("task must belong to the equipment", async () => {
+    const a = await makeEquipment(t, { name: "A" });
+    const b = await makeEquipment(t, { name: "B" });
+    const task = await (
+      await t.call(`/api/equipment/${a.id}/tasks`, {
+        method: "POST",
+        auth: true,
+        body: JSON.stringify({ name: "T", kind: "interval", monthsInterval: 3 }),
+      })
+    ).json();
+    const res = await t.call(`/api/equipment/${b.id}/interventions`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ taskId: task.id, date: "2026-06-01" }),
+    });
+    expect(res.status).toBe(409);
+    expect((await errorOf(res)).code).toBe("task_equipment_mismatch");
+  });
+
+  test("mileage progression + never-lower via meterAt", async () => {
+    const eq = await makeEquipment(t, { name: "Mileage Machine", meterKind: "miles" });
+    const task = await (
+      await t.call(`/api/equipment/${eq.id}/tasks`, {
+        method: "POST",
+        auth: true,
+        body: JSON.stringify({ name: "Oil", kind: "interval", meterInterval: 5000 }),
+      })
+    ).json();
+
+    // no reading yet — meterAt 500 establishes it (mileage progression)
+    const first = await t.call(`/api/equipment/${eq.id}/interventions`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ taskId: task.id, date: "2026-01-10", meterAt: 500 }),
+    });
+    expect(first.status).toBe(201);
+    const eqAfter = await (await t.call(`/api/equipment/${eq.id}`, { auth: true })).json();
+    expect(eqAfter.reading).toBe(500);
+
+    // below current reading → 409
+    const lower = await t.call(`/api/equipment/${eq.id}/interventions`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ taskId: task.id, date: "2026-02-10", meterAt: 400 }),
+    });
+    expect(lower.status).toBe(409);
+
+    // above → moves the reading forward
+    const higher = await t.call(`/api/equipment/${eq.id}/interventions`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ taskId: task.id, date: "2026-03-10", meterAt: 900 }),
+    });
+    expect(higher.status).toBe(201);
+    expect((await (await t.call(`/api/equipment/${eq.id}`, { auth: true })).json()).reading).toBe(
+      900,
+    );
+
+    // and the engine now says: reference moved to 900 → due at 5900, 5000 to go
+    const tasks = await (await t.call(`/api/equipment/${eq.id}/tasks`, { auth: true })).json();
+    expect(tasks[0].due.nextDueMeter).toBe(5900);
+    expect(tasks[0].due.remainingMeter).toBe(5000);
+  });
+
+  test("meterAt on meterless equipment → 409", async () => {
+    const house = await makeEquipment(t, { name: "Shed" });
+    const res = await t.call(`/api/equipment/${house.id}/interventions`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ label: "Paint", date: "2026-05-01", meterAt: 10 }),
+    });
+    expect(res.status).toBe(409);
+    expect((await errorOf(res)).code).toBe("meterless_equipment");
+  });
+
+  test("expiry intervention rolls the task's expiry date forward", async () => {
+    const eq = await makeEquipment(t, { name: "Boat" });
+    const task = await (
+      await t.call(`/api/equipment/${eq.id}/tasks`, {
+        method: "POST",
+        auth: true,
+        body: JSON.stringify({
+          name: "Registration",
+          kind: "expiry",
+          currentExpiryDate: "2026-12-01",
+        }),
+      })
+    ).json();
+    await t.call(`/api/equipment/${eq.id}/interventions`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ taskId: task.id, date: "2026-06-01", expiryDate: "2027-12-01" }),
+    });
+    const after = await (await t.call(`/api/tasks/${task.id}`, { auth: true })).json();
+    expect(after.currentExpiryDate).toBe("2027-12-01");
+
+    // engine: due-soon/ok reflect the NEW date (2027 → ok from 2026-06-15)
+    const tasks = await (await t.call(`/api/equipment/${eq.id}/tasks`, { auth: true })).json();
+    expect(tasks[0].due.nextDueDate).toBe("2027-12-01");
+    expect(tasks[0].due.status).toBe("ok");
+  });
+
+  test("delete task cascades its interventions from History", async () => {
+    const eq = await makeEquipment(t, { name: "Cascade King" });
+    const task = await (
+      await t.call(`/api/equipment/${eq.id}/tasks`, {
+        method: "POST",
+        auth: true,
+        body: JSON.stringify({ name: "T", kind: "interval", monthsInterval: 3 }),
+      })
+    ).json();
+    await t.call(`/api/equipment/${eq.id}/interventions`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ taskId: task.id, date: "2026-01-01" }),
+    });
+    await t.call(`/api/tasks/${task.id}`, { method: "DELETE", auth: true });
+    const history = await (
+      await t.call(`/api/equipment/${eq.id}/interventions`, { auth: true })
+    ).json();
+    expect(history).toHaveLength(0);
+  });
+});

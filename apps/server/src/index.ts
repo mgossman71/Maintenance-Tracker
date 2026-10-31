@@ -1,20 +1,31 @@
 import { mkdirSync } from "node:fs";
-import { openDatabase, runMigrations } from "@maintenance-tracker/db";
-import { createApp } from "./app.ts";
+import { deleteExpiredSessions, openDatabase, runMigrations } from "@maintenance-tracker/db";
+import { createApp, makeDeps } from "./app.ts";
+import { LoginGuard } from "./auth/ratelimit.ts";
 import { loadConfig } from "./config.ts";
 
 const config = loadConfig();
 
 mkdirSync(config.dataDir, { recursive: true, mode: 0o700 });
 const { db } = openDatabase(config.dbPath);
-runMigrations(db); // every startup migrates (M0: rollback point for future backups)
+runMigrations(db); // every startup migrates
 
-const app = createApp({ webDir: config.webDir });
+const deps = makeDeps(db, {
+  session: {
+    idleMs: config.sessionIdleMs,
+    absoluteMs: config.sessionAbsoluteMs,
+    insecureCookies: config.insecureCookies,
+  },
+  guard: new LoginGuard(),
+  trustProxy: config.trustProxy,
+  tz: config.tz,
+});
+deleteExpiredSessions(db, new Date().toISOString());
+
+const app = createApp({ webDir: config.webDir, deps });
 const server = Bun.serve({ port: config.port, hostname: config.bind, fetch: app.fetch });
 
 console.log(
   `maintenance-tracker listening on http://${server.hostname}:${server.port} ` +
-    `(data: ${config.dataDir}, trustProxy: ${config.trustProxy})`,
+    `(data: ${config.dataDir}, trustProxy: ${config.trustProxy}, tz: ${config.tz})`,
 );
-
-void db; // real repositories arrive in M1/M2

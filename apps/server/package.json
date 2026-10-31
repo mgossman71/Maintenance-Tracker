@@ -11,6 +11,7 @@
   "dependencies": {
     "@maintenance-tracker/db": "workspace:*",
     "@maintenance-tracker/shared": "workspace:*",
+    "hash-wasm": "^4.12.0",
     "hono": "^4.9.10",
     "zod": "^4.1.12"
   }
