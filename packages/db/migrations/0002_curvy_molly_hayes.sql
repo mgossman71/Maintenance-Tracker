@@ -1,0 +1,1 @@
+ALTER TABLE `task` ADD `baseline_meter` real;

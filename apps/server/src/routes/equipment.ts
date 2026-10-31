@@ -1,6 +1,7 @@
 import { unlinkSync } from "node:fs";
 import { join } from "node:path";
 import {
+  backfillTaskMeterBaselines,
   deleteEquipment,
   type EquipmentRow,
   getEquipment,
@@ -46,7 +47,9 @@ export function taskWithDue(
       kind: t.kind === "expiry" ? "expiry" : "interval",
       monthsInterval: t.monthsInterval,
       meterInterval: t.meterInterval,
+      baselineMeter: t.baselineMeter,
       currentExpiryDate: t.currentExpiryDate,
+      createdAt: t.createdAt.slice(0, 10),
     },
     equipment: {
       meterKind: eq.meterKind as "none" | "hours" | "miles",
@@ -172,6 +175,8 @@ export function equipmentRoutes(deps: AppDeps) {
       readingUpdatedAt: parsed.data.date ?? deps.today(),
     });
     if (updated === null) return fail(c, "not_found", 404);
+    // unserviced meter tasks start counting from here (baseline, §rule 3)
+    backfillTaskMeterBaselines(db, eq.id, parsed.data.reading);
     return c.json(updated);
   });
 
@@ -197,7 +202,12 @@ export function equipmentRoutes(deps: AppDeps) {
         details: [{ path: "meterInterval", message: "equipment has no meter (meterless)" }],
       });
     }
-    const row = insertTask(db, { ...parsed.data, equipmentId: eq.id });
+    const row = insertTask(db, {
+      ...parsed.data,
+      equipmentId: eq.id,
+      // a meter task born against a live reading starts counting from it
+      baselineMeter: parsed.data.meterInterval != null ? eq.reading : null,
+    });
     return c.json(taskWithDue(deps, eq, row, listInterventionsForEquipment(db, eq.id)), 201);
   });
 

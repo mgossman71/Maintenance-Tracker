@@ -16,7 +16,9 @@ const task = (over: Partial<EngineTask> = {}): EngineTask => ({
   kind: "interval",
   monthsInterval: null,
   meterInterval: null,
+  baselineMeter: null,
   currentExpiryDate: null,
+  createdAt: "2026-06-01",
   ...over,
 });
 
@@ -168,31 +170,77 @@ describe("interval tasks with BOTH components", () => {
       "2026-01-15T12:00:00Z",
     );
     expect(due.nextDueMeter).toBe(50000); // i1's 45000, not t9's 1
-    expect(due.reasons).not.toContain("no_history"); // t1 sees its own history; t9 never counts
+    expect(due.reasons).not.toContain("meter_baseline_created"); // t1 sees its own history
   });
 });
 
-// ---- unknown states ---------------------------------------------------------
+// ---- fresh tasks: anchored at their start, never overdue on day one ----------
 
-describe("no-history and misconfigured states", () => {
+describe("no-history states anchor at the task's start", () => {
   const now = "2026-06-15T12:00:00Z";
 
-  test("interval task never done → overdue (record the first service)", () => {
-    const due = run(task({ monthsInterval: 6 }), eq(), [], now);
-    expect(due.status).toBe("overdue");
-    expect(due.reasons).toContain("no_history");
-    expect(due.nextDueDate).toBeNull();
+  test("months task never done → counts from its creation date", () => {
+    const due = run(task({ monthsInterval: 6, createdAt: "2026-06-01" }), eq(), [], now);
+    expect(due.status).toBe("ok");
+    expect(due.nextDueDate).toBe("2026-12-01");
+    expect(due.reasons).toContain("months_baseline_created");
   });
 
-  test("meter task with no metered history → overdue via no_history", () => {
+  test("a months task CREATED LONG ENOUGH AGO does go overdue", () => {
+    const due = run(task({ monthsInterval: 6, createdAt: "2025-01-10" }), eq(), [], now);
+    expect(due.status).toBe("overdue");
+    expect(due.nextDueDate).toBe("2025-07-10");
+  });
+
+  test("meter task never done → counts from the CURRENT reading", () => {
     const due = run(
       task({ meterInterval: 5000 }),
       eq({ meterKind: "miles", reading: 47000 }),
       [iv("i1", "2026-01-01", { meterAt: null })],
       now,
     );
+    expect(due.status).toBe("ok");
+    expect(due.nextDueMeter).toBe(52000);
+    expect(due.remainingMeter).toBe(5000);
+    expect(due.reasons).toContain("meter_baseline_created");
+  });
+
+  test("a pinned baseline, not the rotating reading, anchors the count", () => {
+    const due = run(
+      task({ meterInterval: 5000, baselineMeter: 40000 }),
+      eq({ meterKind: "miles", reading: 42000 }),
+      [],
+      now,
+    );
+    expect(due.status).toBe("ok");
+    expect(due.nextDueMeter).toBe(45000); // baseline 40,000 + 5,000 — not reading + 5,000
+    expect(due.remainingMeter).toBe(3000);
+    expect(due.reasons).toContain("meter_baseline_created");
+  });
+
+  // the reported bug: 1,000-unit interval, first reading 600 becomes the
+  // baseline (server backfill) → due at 1,600, NOT overdue
+  test("the Sporster S case: 1000 interval, first reading 600 → due at 1600", () => {
+    const due = run(
+      task({ meterInterval: 1000, baselineMeter: 600, createdAt: "2026-06-15" }),
+      eq({ meterKind: "miles", reading: 600, readingUpdatedAt: "2026-06-15" }),
+      [],
+      now,
+    );
+    expect(due.status).toBe("ok");
+    expect(due.nextDueMeter).toBe(1600);
+    expect(due.remainingMeter).toBe(1000);
+  });
+
+  test("reading climbs past the pinned baseline → eventually overdue", () => {
+    const due = run(
+      task({ meterInterval: 1000, baselineMeter: 600 }),
+      eq({ meterKind: "miles", reading: 1750 }),
+      [],
+      now,
+    );
     expect(due.status).toBe("overdue");
-    expect(due.reasons).toContain("no_history");
+    expect(due.remainingMeter).toBe(-150);
   });
 
   test("meter task, equipment reading missing → due-soon, never overdue-on-nothing", () => {

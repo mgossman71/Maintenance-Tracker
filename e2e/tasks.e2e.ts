@@ -45,7 +45,9 @@ test.describe("tasks + task library", () => {
     await expect(pane.getByText("Chain lube")).toHaveCount(0);
   });
 
-  test("metered equipment: preset prefill → overdue task; expiry task is OK", async ({ page }) => {
+  test("metered equipment: preset prefill → reading nudge; a reading starts the count", async ({
+    page,
+  }) => {
     await createEquipment(page, "Weekend Diesel", "miles");
     await page.getByRole("link", { name: "Weekend Diesel" }).click();
     await page.getByTestId("tab-tasks").click();
@@ -63,9 +65,17 @@ test.describe("tasks + task library", () => {
     await expect(page.getByTestId("create-meter")).toHaveValue("5000");
     await page.getByTestId("create-task-submit").click();
 
-    // no history → the engine says overdue, honestly
+    // no reading yet → amber "get a reading", never overdue-on-nothing
     const card = page.getByTestId("tasks-pane").locator("li").filter({ hasText: "Oil change" });
-    await expect(card.getByTestId("due-chip-overdue")).toBeVisible();
+    await expect(card.getByTestId("due-chip-due-soon")).toBeVisible();
+
+    // enter the odometer → the 5,000-mile count starts from there
+    await page.getByTestId("tab-info").click();
+    await page.getByTestId("reading-input").fill("2500");
+    await page.getByTestId("reading-submit").click();
+    await page.getByTestId("tab-tasks").click();
+    await expect(card.getByTestId("due-chip-ok")).toBeVisible();
+    await expect(card).toContainText("due at 7,500");
 
     // expiry task far in the future → OK
     await page.getByTestId("add-task-button").click();

@@ -18,10 +18,10 @@ async function blockIdFor(page: Page, name: string): Promise<string> {
 }
 
 test.describe("dashboard", () => {
-  test("fresh equipment surfaces overdue first and nags for a reading", async ({ page }) => {
+  test("a back-dated service makes a task overdue — the hero leads with it", async ({ page }) => {
     await login(page);
 
-    // metered equipment + interval task, no history, no reading
+    // metered equipment + interval task, then a service done 13 months ago
     await page.goto("/equipment");
     await page.getByTestId("add-equipment-button").click();
     await page.getByTestId("create-name").fill("Rush Rocket");
@@ -35,6 +35,14 @@ test.describe("dashboard", () => {
     await page.getByTestId("create-task-name").fill("Wax job");
     await page.getByTestId("create-months").fill("12");
     await page.getByTestId("create-task-submit").click();
+
+    // record the last time it was done — 13 months ago → overdue since May
+    await page.getByTestId("tab-history").click();
+    await page.getByTestId("record-work-button").click();
+    const wax = page.getByRole("option", { name: /^Wax job/ }).first();
+    await page.getByTestId("create-target").selectOption((await wax.getAttribute("value")) ?? "");
+    await page.getByTestId("create-date").fill("2025-05-01");
+    await page.getByTestId("create-submit").click();
 
     // the hero: totals, the overdue chip, and the never-recorded nag
     await page.goto("/");

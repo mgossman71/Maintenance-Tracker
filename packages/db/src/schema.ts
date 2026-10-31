@@ -42,6 +42,12 @@ export const task = sqliteTable(
     kind: text("kind").notNull(),
     monthsInterval: integer("months_interval"),
     meterInterval: real("meter_interval"),
+    /**
+     * Meter reading this task began counting from, before any service was
+     * recorded: set at creation from the equipment's reading, or backfilled
+     * when the first reading lands. History (metered work) always wins.
+     */
+    baselineMeter: real("baseline_meter"),
     currentExpiryDate: text("current_expiry_date"), // YYYY-MM-DD, expiry kind
     createdAt: text("created_at")
       .notNull()

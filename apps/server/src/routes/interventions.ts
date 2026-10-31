@@ -1,6 +1,7 @@
 import { unlinkSync } from "node:fs";
 import { join } from "node:path";
 import {
+  backfillTaskMeterBaselines,
   deleteIntervention,
   type EquipmentRow,
   getEquipment,
@@ -75,6 +76,8 @@ export function createInterventionForEquipment(
   // mileage progression — work done further along moves the meter forward
   if (d.meterAt != null && (eq.reading === null || d.meterAt > eq.reading)) {
     updateEquipment(deps.db, eq.id, { reading: d.meterAt, readingUpdatedAt: d.date });
+    // other unserviced meter tasks start counting from this point too
+    backfillTaskMeterBaselines(deps.db, eq.id, d.meterAt);
   }
   // expiry tasks: the work establishes the next expiry date
   if (taskRow !== null && taskRow.kind === "expiry" && d.expiryDate != null) {

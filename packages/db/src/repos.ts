@@ -4,7 +4,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { eq, lt } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lt } from "drizzle-orm";
 import type { DatabaseHandle } from "./client.ts";
 import {
   appSettings,
@@ -148,6 +148,7 @@ export function insertTask(
     kind: string;
     monthsInterval?: number | null;
     meterInterval?: number | null;
+    baselineMeter?: number | null;
     currentExpiryDate?: string | null;
   },
 ): TaskRow {
@@ -159,6 +160,7 @@ export function insertTask(
     kind: data.kind,
     monthsInterval: data.monthsInterval ?? null,
     meterInterval: data.meterInterval ?? null,
+    baselineMeter: data.baselineMeter ?? null,
     currentExpiryDate: data.currentExpiryDate ?? null,
   };
   db.insert(task).values(row).run();
@@ -177,6 +179,7 @@ export function updateTask(
       | "description"
       | "monthsInterval"
       | "meterInterval"
+      | "baselineMeter"
       | "currentExpiryDate"
       | "updatedAt"
     >
@@ -232,6 +235,35 @@ export function updateIntervention(
 
 export function deleteIntervention(db: Db, id: string): void {
   db.delete(intervention).where(eq(intervention.id, id)).run();
+}
+
+/**
+ * When a reading is recorded, meter tasks on that equipment that have NOT
+ * been serviced with a meter reading yet (and have no baseline pinned)
+ * start counting from THIS reading — the user just told us where the meter
+ * stands. The anchor then never rotates: subsequent readings eat into the
+ * interval for real.
+ */
+export function backfillTaskMeterBaselines(db: Db, equipmentId: string, reading: number): void {
+  const open = db
+    .select()
+    .from(task)
+    .where(
+      and(
+        eq(task.equipmentId, equipmentId),
+        isNull(task.baselineMeter),
+        isNotNull(task.meterInterval),
+      ),
+    )
+    .all();
+  for (const t of open) {
+    const meteredWork = db
+      .select({ id: intervention.id })
+      .from(intervention)
+      .where(and(eq(intervention.taskId, t.id), isNotNull(intervention.meterAt)))
+      .all();
+    if (meteredWork.length === 0) updateTask(db, t.id, { baselineMeter: reading });
+  }
 }
 
 // ---- attachments (metadata; bytes live in DATA_DIR/files, §6.8) -------------------

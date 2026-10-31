@@ -16,7 +16,10 @@ export type DueStatus = z.infer<typeof dueStatusSchema>;
 
 /** Machine-readable reasons attached to a due-status result. */
 export const dueReasonSchema = z.enum([
-  "no_history", // interval task, never done → due now (nudge to record first service)
+  /** Interval task never done: months anchor is the TASK CREATION date. */
+  "months_baseline_created",
+  /** Meter task never done: meter anchor is the equipment's CURRENT reading. */
+  "meter_baseline_created",
   "no_expiry_date", // expiry task without a date → due now
   "no_current_reading", // meter task but equipment reading is null → can't compute
   "meter_on_none_equipment", // misconfiguration; API validation rejects it (M5)
@@ -41,8 +44,16 @@ export interface EngineTask {
   monthsInterval: number | null;
   /** Meter units between services (>0). null = no meter component. */
   meterInterval: number | null;
+  /**
+   * Meter reading this task started counting from (set when the task is
+   * created against a reading, or backfilled when the first reading lands).
+   * Only consulted when no metered service exists; history always wins.
+   */
+  baselineMeter: number | null;
   /** YYYY-MM-DD, expiry tasks only. */
   currentExpiryDate: string | null;
+  /** YYYY-MM-DD the task was created — the baseline anchor when never done. */
+  createdAt: string;
 }
 
 export interface EngineEquipment {

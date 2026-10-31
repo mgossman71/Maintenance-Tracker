@@ -8,8 +8,16 @@
  * Rules encoded here (all tested in engine.test.ts):
  *  1. Months intervals are CALENDAR months with end-of-month clamping.
  *  2. Status composes across components: overdue > due-soon > ok.
- *  3. An interval task with no interventions is DUE NOW (nudge to record
- *     the first service) — reason: no_history.
+ *  3. An interval task with NO service history is anchored at its own
+ *     START, not flagged overdue: the months count begins at the task's
+ *     creation date; the meter count at the task's BASELINE — the reading
+ *     it began counting from, pinned when the task is created against a
+ *     reading or when the first reading lands (reasons:
+ *     months_baseline_created / meter_baseline_created). The baseline does
+ *     NOT rotate as later readings climb, so the task really approaches its
+ *     due point; know the actual last service? Record the work with its
+ *     past date and the anchor moves there. Never-serviceable ≠ silently
+ *     overdue on day one.
  *  4. Meter reference = the most recent dated intervention (this task) that
  *     carries a meter reading; current value = the equipment's reading.
  *  5. A meter task on equipment with no current reading is due-SOON (amber
@@ -123,26 +131,24 @@ function intervalDue(
   // ---- months component ----
   if (task.monthsInterval !== null) {
     const last = history.at(-1);
-    if (last === undefined) {
+    // Never done: the count starts at the task's own creation date.
+    const baseline = last?.date ?? task.createdAt;
+    nextDueDate = addCalendarMonths(baseline, task.monthsInterval);
+    remainingDays = daysBetween(today, nextDueDate);
+    if (remainingDays <= 0) {
       status = worst(status, "overdue");
-      reasons.push("no_history");
+      reasons.push("months_overdue");
     } else {
-      nextDueDate = addCalendarMonths(last.date, task.monthsInterval);
-      remainingDays = daysBetween(today, nextDueDate);
-      if (remainingDays <= 0) {
-        status = worst(status, "overdue");
-        reasons.push("months_overdue");
+      const span = daysBetween(baseline, nextDueDate);
+      const soonDays = Math.max(DUE_SOON_MIN_DAYS, Math.ceil(span * DUE_SOON_FRACTION));
+      if (remainingDays <= soonDays) {
+        status = worst(status, "due-soon");
+        reasons.push("months_due_soon");
       } else {
-        const span = daysBetween(last.date, nextDueDate);
-        const soonDays = Math.max(DUE_SOON_MIN_DAYS, Math.ceil(span * DUE_SOON_FRACTION));
-        if (remainingDays <= soonDays) {
-          status = worst(status, "due-soon");
-          reasons.push("months_due_soon");
-        } else {
-          reasons.push("months_ok");
-        }
+        reasons.push("months_ok");
       }
     }
+    if (last === undefined) reasons.push("months_baseline_created");
   }
 
   // ---- meter component ----
@@ -158,14 +164,17 @@ function intervalDue(
         i.meterAt === null ? [] : [{ iv: i, meter: i.meterAt }],
       );
       const lastMeter = metered.at(-1);
-      if (lastMeter === undefined) {
-        status = worst(status, "overdue");
-        reasons.push("no_history");
-      } else if (equipment.reading === null) {
+      if (equipment.reading === null) {
+        // nothing to count against — nudge for a reading (due-SOON, §rule 5)
         status = worst(status, "due-soon");
         reasons.push("no_current_reading");
       } else {
-        nextDueMeter = lastMeter.meter + task.meterInterval;
+        // Never serviced with the meter: count from the task's recorded
+        // baseline — the reading it started at — falling back to the current
+        // reading (counting starts right now). The baseline does NOT rotate
+        // with later readings, so the task genuinely approaches its due point.
+        const baselineMeter = lastMeter?.meter ?? task.baselineMeter ?? equipment.reading;
+        nextDueMeter = baselineMeter + task.meterInterval;
         remainingMeter = nextDueMeter - equipment.reading;
         if (remainingMeter <= 0) {
           status = worst(status, "overdue");
@@ -176,6 +185,7 @@ function intervalDue(
         } else {
           reasons.push("meter_ok");
         }
+        if (lastMeter === undefined) reasons.push("meter_baseline_created");
       }
     }
   }
