@@ -14,6 +14,7 @@ export function useInterventionMutations(equipmentId: string) {
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["equipment", equipmentId] });
     void qc.invalidateQueries({ queryKey: ["equipment"] });
+    void qc.invalidateQueries({ queryKey: ["dashboard"] });
   };
   return {
     create: useMutation({

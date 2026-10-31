@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export * from "./api.ts";
+export * from "./dashboard.ts";
 export * from "./date.ts";
 export * from "./domain.ts";
 export * from "./engine.ts";

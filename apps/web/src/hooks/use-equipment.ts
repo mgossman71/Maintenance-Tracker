@@ -18,6 +18,7 @@ export function useEquipmentMutations() {
   const qc = useQueryClient();
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["equipment"] });
+    void qc.invalidateQueries({ queryKey: ["dashboard"] });
   };
   return {
     create: useMutation({ mutationFn: api.equipment.create, onSuccess: refresh }),

@@ -1,6 +1,7 @@
 import type {
   AttachmentInfo,
   AuthStatus,
+  DashboardPayload,
   ErrorEnvelope,
   InterventionInfo,
   TaskPresetInfo,
@@ -117,6 +118,7 @@ export type InterventionUpdateInput = Partial<Omit<InterventionCreateInput, "tas
 
 export const api = {
   status: () => request<AuthStatus>("/api/auth/status"),
+  dashboard: () => request<DashboardPayload>("/api/dashboard"),
   setup: (password: string) =>
     request<SessionInfo>("/api/auth/setup", { method: "POST", body: { password } }),
   login: (password: string) =>

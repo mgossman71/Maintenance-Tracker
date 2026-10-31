@@ -6,6 +6,7 @@ import type { SessionConfig } from "./auth/sessions.ts";
 import { csrfProtection, requireSession } from "./http/middleware.ts";
 import { attachmentsRoutes } from "./routes/attachments.ts";
 import { authRoutes } from "./routes/auth.ts";
+import { dashboardRoutes } from "./routes/dashboard.ts";
 import { equipmentRoutes } from "./routes/equipment.ts";
 import { interventionsRoutes } from "./routes/interventions.ts";
 import { presetsRoutes } from "./routes/presets.ts";
@@ -76,6 +77,7 @@ export function createApp({ webDir, deps }: AppOptions = {}) {
     app.route("/api/presets", presetsRoutes(deps));
     app.route("/api/interventions", interventionsRoutes(deps));
     app.route("/api/attachments", attachmentsRoutes(deps));
+    app.route("/api/dashboard", dashboardRoutes(deps));
   }
 
   if (webDir !== undefined) {

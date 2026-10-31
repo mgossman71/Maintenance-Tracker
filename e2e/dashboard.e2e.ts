@@ -1,0 +1,98 @@
+import { expect, type Page, test } from "@playwright/test";
+import { login } from "./helpers";
+
+/**
+ * M7 hero screen: urgency ordering, the stale-meter banner with inline
+ * update / same-reading, and quick "Done" with a prefilled meter.
+ * Cleans up its equipment — later specs assume an empty vault.
+ */
+
+/** The dashboard block's equipment id, from its detail link. */
+async function blockIdFor(page: Page, name: string): Promise<string> {
+  const href = await page
+    .locator('[data-testid^="dash-block-"]')
+    .getByRole("link", { name })
+    .first()
+    .getAttribute("href");
+  return (href ?? "").split("/").pop() ?? "";
+}
+
+test.describe("dashboard", () => {
+  test("fresh equipment surfaces overdue first and nags for a reading", async ({ page }) => {
+    await login(page);
+
+    // metered equipment + interval task, no history, no reading
+    await page.goto("/equipment");
+    await page.getByTestId("add-equipment-button").click();
+    await page.getByTestId("create-name").fill("Rush Rocket");
+    await page.getByTestId("create-meter").selectOption("miles");
+    await page.getByTestId("create-submit").click();
+
+    await page.getByRole("link", { name: "Rush Rocket" }).click();
+    await page.getByTestId("tab-tasks").click();
+    await page.getByTestId("add-task-button").click();
+    await page.getByTestId("create-preset").selectOption("custom");
+    await page.getByTestId("create-task-name").fill("Wax job");
+    await page.getByTestId("create-months").fill("12");
+    await page.getByTestId("create-task-submit").click();
+
+    // the hero: totals, the overdue chip, and the never-recorded nag
+    await page.goto("/");
+    await expect(page.getByTestId("dashboard-totals")).toContainText("1 overdue");
+    const id = await blockIdFor(page, "Rush Rocket");
+    const block = page.getByTestId(`dash-block-${id}`);
+    await expect(block.getByTestId("due-chip-overdue")).toBeVisible();
+    await expect(block.getByTestId("stale-meter-banner")).toContainText("No meter reading yet");
+  });
+
+  test("banner: update reading inline — the nag clears", async ({ page }) => {
+    await login(page);
+    const block = page.getByTestId(`dash-block-${await blockIdFor(page, "Rush Rocket")}`);
+
+    await block.getByRole("button", { name: "Update reading" }).click();
+    await page.getByTestId("banner-reading-input").fill("5000");
+    await page.getByTestId("banner-reading-submit").click();
+
+    await expect(block.getByTestId("stale-meter-banner")).toHaveCount(0);
+    await expect(block).toContainText("5,000 mi");
+  });
+
+  test("quick Done: prefilled meter, records work, chip flips to OK", async ({ page }) => {
+    await login(page);
+    const block = page.getByTestId(`dash-block-${await blockIdFor(page, "Rush Rocket")}`);
+
+    await block.getByRole("button", { name: "Done" }).click();
+    // prefilled: the task is selected and the meter rides along
+    await expect(page.getByTestId("quick-target")).not.toHaveValue("");
+    await expect(page.getByTestId("quick-meter")).toHaveValue("5000");
+    await page.getByTestId("quick-submit").click();
+
+    await expect(block.getByTestId("due-chip-ok")).toBeVisible();
+    await expect(page.getByTestId("dashboard-totals")).toContainText("Everything is on schedule");
+  });
+
+  test("banner: stale again via an old date, cleared by Same reading", async ({ page }) => {
+    await login(page);
+    const id = await blockIdFor(page, "Rush Rocket");
+
+    // age the reading explicitly (a fixed past date is stale vs any "now")
+    await page.goto(`/equipment/${id}`);
+    await page.getByTestId("reading-input").fill("5001");
+    await page.getByTestId("reading-date").fill("2025-01-01");
+    await page.getByTestId("reading-submit").click();
+
+    await page.goto("/");
+    const block = page.getByTestId(`dash-block-${id}`);
+    await expect(block.getByTestId("stale-meter-banner")).toContainText("Meter last read");
+    await block.getByTestId("banner-same-reading").click();
+    await expect(block.getByTestId("stale-meter-banner")).toHaveCount(0);
+  });
+
+  test("cleanup: remove the test equipment", async ({ page }) => {
+    await login(page);
+    await page.goto("/equipment");
+    await page.getByRole("button", { name: "Delete Rush Rocket" }).click();
+    await page.getByTestId("confirm-button").click();
+    await expect(page.getByText("No equipment yet")).toBeVisible();
+  });
+});

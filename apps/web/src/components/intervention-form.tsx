@@ -40,10 +40,12 @@ export function InterventionForm({
   const editing = intervention !== undefined;
   const [target, setTarget] = useState(
     editing
-      ? (intervention.taskId ?? `label`)
-      : (prefill?.taskId ?? prefill?.label != null)
-        ? "label"
-        : "",
+      ? (intervention.taskId ?? "label")
+      : prefill?.taskId
+        ? prefill.taskId
+        : prefill?.label != null
+          ? "label"
+          : "",
   );
   const [label, setLabel] = useState(editing ? (intervention.label ?? "") : (prefill?.label ?? ""));
   const [date, setDate] = useState(editing ? intervention.date : (prefill?.date ?? today()));

@@ -29,6 +29,7 @@ const DATA_ROUTES: [string, string, string?][] = [
   ["GET", "/api/attachments/whatever"],
   ["GET", "/api/attachments/equipment/whatever"],
   ["DELETE", "/api/attachments/whatever"],
+  ["GET", "/api/dashboard"],
   ["GET", "/api/interventions/whatever"],
   ["PATCH", "/api/interventions/whatever", '{"date":"2026-01-01"}'],
   ["DELETE", "/api/interventions/whatever"],
