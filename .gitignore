@@ -1,0 +1,23 @@
+# --- public repo discipline (build-plan.md §5): nothing sensitive, ever ---
+# App data: sqlite db, uploads, anything runtime-written
+data/
+# Secrets
+.env
+.env.*
+!.env.example
+
+# --- build / deps ---
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# --- test artifacts ---
+playwright-report/
+test-results/
+blob-report/
+
+# --- misc ---
+.DS_Store
+bun-debug.log*
+*.local

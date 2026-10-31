@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4 # exact pin — engines.bun is the source of truth
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bunx biome ci .
+      - run: bun test
+      # Playwright e2e joins the suite from M3 (build-plan.md §10)
+      - run: bun run build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: false
+          tags: maintenance-tracker:ci

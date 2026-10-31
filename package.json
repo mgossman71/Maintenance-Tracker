@@ -1,0 +1,30 @@
+{
+  "name": "maintenance-tracker",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "bun": "1.4.4"
+  },
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"bun run --cwd apps/server dev\" \"bun run --cwd apps/web dev\"",
+    "build": "bun run --cwd apps/web build",
+    "start": "bun run --cwd apps/server start",
+    "typecheck": "bun run --cwd packages/shared typecheck && bun run --cwd packages/db typecheck && bun run --cwd apps/server typecheck && bun run --cwd apps/web typecheck",
+    "test": "bun test",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "db:generate": "bun run --cwd packages/db db:generate",
+    "db:migrate": "bun run --cwd packages/db db:migrate"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.6",
+    "@types/bun": "^1.4.4",
+    "concurrently": "^10.0.6",
+    "typescript": "5.9.3"
+  }
+}

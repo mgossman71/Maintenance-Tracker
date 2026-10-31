@@ -1,0 +1,17 @@
+{
+  "name": "@maintenance-tracker/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "MT_DATA_DIR=../../data bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@maintenance-tracker/db": "workspace:*",
+    "@maintenance-tracker/shared": "workspace:*",
+    "hono": "^4.9.10",
+    "zod": "^4.1.12"
+  }
+}
