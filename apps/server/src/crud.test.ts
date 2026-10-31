@@ -394,6 +394,61 @@ describe("tasks + engine through HTTP", () => {
     expect(task.due.status).toBe("ok");
     expect(task.due.nextDueMeter).toBe(2750);
   });
+
+  // the edit form's absolute "next service due at N" → PATCH baselineMeter
+  // (the form sends N − interval; no user arithmetic required either way)
+  test("editing the due point: PATCH baselineMeter re-anchors unserviced tasks", async () => {
+    const eq = await makeEquipment(t, { name: "Fixable Sporster", meterKind: "miles" });
+    const created = await (
+      await t.call(`/api/equipment/${eq.id}/tasks`, {
+        method: "POST",
+        auth: true,
+        body: JSON.stringify({ name: "Service", kind: "interval", meterInterval: 1000 }),
+      })
+    ).json();
+    await t.call(`/api/equipment/${eq.id}/reading`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ reading: 600 }),
+    });
+    const id = created.id;
+    const patchTask = (patch: unknown) =>
+      t.call(`/api/tasks/${id}`, { method: "PATCH", auth: true, body: JSON.stringify(patch) });
+
+    // created under interval semantics → due at 1,600; owner says "due AT 1,000"
+    let row = (await (await t.call(`/api/equipment/${eq.id}/tasks`, { auth: true })).json())[0];
+    expect(row.due.nextDueMeter).toBe(1600);
+    expect((await patchTask({ baselineMeter: 0 })).status).toBe(200);
+    row = (await (await t.call(`/api/equipment/${eq.id}/tasks`, { auth: true })).json())[0];
+    expect(row.due.nextDueMeter).toBe(1000); // the point itself
+    expect(row.due.remainingMeter).toBe(400); // 400 to go — the owner's number
+    expect(row.due.status).toBe("ok");
+
+    // months-only tasks carry no meter count → rejected
+    const months = await (
+      await t.call(`/api/equipment/${eq.id}/tasks`, {
+        method: "POST",
+        auth: true,
+        body: JSON.stringify({ name: "Wax", kind: "interval", monthsInterval: 6 }),
+      })
+    ).json();
+    const badPatch = await t.call(`/api/tasks/${months.id}`, {
+      method: "PATCH",
+      auth: true,
+      body: JSON.stringify({ baselineMeter: 0 }),
+    });
+    expect(badPatch.status).toBe(400);
+
+    // and once recorded work anchors the count, the baseline is history's job
+    await t.call(`/api/equipment/${eq.id}/interventions`, {
+      method: "POST",
+      auth: true,
+      body: JSON.stringify({ taskId: id, date: "2026-06-20", meterAt: 1000 }),
+    });
+    const conflict = await patchTask({ baselineMeter: 500 });
+    expect(conflict.status).toBe(409);
+    expect((await conflict.json()).error.code).toBe("baseline_anchored_by_history");
+  });
 });
 
 describe("interventions + meter/expiry rules", () => {

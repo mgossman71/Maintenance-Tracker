@@ -1,4 +1,4 @@
-import { deleteTask, getTask, updateTask } from "@maintenance-tracker/db";
+import { deleteTask, getTask, hasMeteredHistory, updateTask } from "@maintenance-tracker/db";
 import { taskUpdateSchema } from "@maintenance-tracker/shared";
 import { Hono } from "hono";
 import type { AppDeps } from "../app.ts";
@@ -41,6 +41,20 @@ export function tasksRoutes(deps: AppDeps) {
       return fail(c, "validation_failed", 400, {
         details: [{ path: "kind", message: "expiry tasks carry no intervals" }],
       });
+    }
+    // a baseline (the edit form's absolute "due at N") must have something
+    // to anchor, and must not fight recorded work, which always wins
+    if (parsed.data.baselineMeter !== undefined) {
+      if (row.kind !== "interval" || meter == null) {
+        return fail(c, "validation_failed", 400, {
+          details: [{ path: "baselineMeter", message: "needs a meter interval to anchor" }],
+        });
+      }
+      if (hasMeteredHistory(deps.db, row.id)) {
+        return fail(c, "baseline_anchored_by_history", 409, {
+          message: "recorded work already anchors this task — log the service to move it",
+        });
+      }
     }
 
     const updated = updateTask(deps.db, row.id, { ...parsed.data });

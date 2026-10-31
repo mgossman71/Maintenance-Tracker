@@ -237,6 +237,17 @@ export function deleteIntervention(db: Db, id: string): void {
   db.delete(intervention).where(eq(intervention.id, id)).run();
 }
 
+/** True once any recorded work for this task carries a meter reading. */
+export function hasMeteredHistory(db: Db, taskId: string): boolean {
+  return (
+    db
+      .select({ id: intervention.id })
+      .from(intervention)
+      .where(and(eq(intervention.taskId, taskId), isNotNull(intervention.meterAt)))
+      .all().length > 0
+  );
+}
+
 /**
  * When a reading is recorded, meter tasks on that equipment that have NOT
  * been serviced with a meter reading yet (and have no baseline pinned)
@@ -257,12 +268,7 @@ export function backfillTaskMeterBaselines(db: Db, equipmentId: string, reading:
     )
     .all();
   for (const t of open) {
-    const meteredWork = db
-      .select({ id: intervention.id })
-      .from(intervention)
-      .where(and(eq(intervention.taskId, t.id), isNotNull(intervention.meterAt)))
-      .all();
-    if (meteredWork.length === 0) updateTask(db, t.id, { baselineMeter: reading });
+    if (!hasMeteredHistory(db, t.id)) updateTask(db, t.id, { baselineMeter: reading });
   }
 }
 

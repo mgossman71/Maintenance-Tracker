@@ -23,6 +23,7 @@ export const errorCodes = [
   "meter_kind_immutable",
   "unsupported_media",
   "payload_too_large",
+  "baseline_anchored_by_history", // editing a baseline the recorded work already owns
 ] as const;
 export type ErrorCode = (typeof errorCodes)[number];
 
@@ -168,11 +169,29 @@ export const taskUpdateSchema = z
     description: z.string().max(2000).nullish(),
     monthsInterval: z.number().int().min(1).nullish(),
     meterInterval: z.number().positive().nullish(),
+    /**
+     * Re-pin where the meter count starts — what the edit form's absolute
+     * "next service due at N" becomes (baseline = N − interval). Server
+     * rejects it when the RESULT has no meter interval, or when recorded
+     * work already anchors the count (history beats baseline).
+     */
+    baselineMeter: z.number().nonnegative().nullish(),
     currentExpiryDate: isoDateSchema.nullish(),
   })
   .superRefine((v, ctx) => {
+    // explicit "remove the meter interval" alongside a baseline is nonsense
+    if (v.meterInterval === null && v.baselineMeter != null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["baselineMeter"],
+        message: "baselineMeter only anchors a meter interval",
+      });
+    }
     if (v.monthsInterval == null && v.meterInterval == null) return; // patch semantics; server re-checks result
-    taskIntervals({ kind: "interval", ...v }, ctx);
+    taskIntervals(
+      { kind: "interval", monthsInterval: v.monthsInterval, meterInterval: v.meterInterval },
+      ctx,
+    );
   });
 export type TaskUpdate = z.infer<typeof taskUpdateSchema>;
 

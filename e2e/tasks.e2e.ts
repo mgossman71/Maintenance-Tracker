@@ -76,6 +76,16 @@ test.describe("tasks + task library", () => {
     await page.getByTestId("tab-tasks").click();
     await expect(card.getByTestId("due-chip-ok")).toBeVisible();
     await expect(card).toContainText("due at 7,500");
+    await expect(card).toContainText("5,000 to go"); // what's left, spelled out
+
+    // “next service is due AT 6,000 miles” — set the point directly; no
+    // interval arithmetic for the owner, regardless of where the odometer sits
+    await card.getByRole("button", { name: "Edit Oil change" }).click();
+    await expect(page.getByTestId("edit-due-at")).toHaveValue("7500");
+    await page.getByTestId("edit-due-at").fill("6000");
+    await page.getByTestId("edit-task-submit").click();
+    await expect(card).toContainText("due at 6,000");
+    await expect(card).toContainText("3,500 to go");
 
     // expiry task far in the future → OK
     await page.getByTestId("add-task-button").click();

@@ -22,7 +22,7 @@ export function DueChip({ status }: { status: TaskWithDue["due"]["status"] }) {
   );
 }
 
-/** "due 2026-11-02 · in 138 d" / "in 480 mi" — the engine's verdict, compactly. */
+/** "due 2026-11-02 · in 138 d" / "due at 1,000mi · 400 to go" — the verdict, compactly. */
 export function dueSummary(task: TaskWithDue, unit: "mi" | "h" | null): string {
   const parts: string[] = [];
   if (task.due.nextDueDate !== null) {
@@ -36,10 +36,13 @@ export function dueSummary(task: TaskWithDue, unit: "mi" | "h" | null): string {
   }
   if (task.due.nextDueMeter !== null) {
     const m = task.due.nextDueMeter.toLocaleString("en-US");
+    const r = task.due.remainingMeter;
     parts.push(
-      task.due.remainingMeter !== null && task.due.remainingMeter <= 0
-        ? `meter overdue at ${m}${unit ?? ""}`
-        : `due at ${m}${unit ?? ""}`,
+      r === null
+        ? `due at ${m}${unit ?? ""}`
+        : r <= 0
+          ? `overdue by ${Math.abs(r).toLocaleString("en-US")}${unit ?? ""} (was due at ${m})`
+          : `due at ${m}${unit ?? ""} · ${r.toLocaleString("en-US")} to go`,
     );
   }
   return parts.join(" · ");

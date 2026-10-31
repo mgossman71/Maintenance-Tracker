@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { openDatabase, runMigrations } from "./client.ts";
 import {
   appSettings,
@@ -168,4 +168,58 @@ describe("CHECK constraints reject nonsense at the file level (§6.9 defense in 
       .values({ id: "bad11", equipmentId: "nope", label: "x", date: "2026-01-01" })
       .run(),
   );
+});
+
+describe("migration 0003 data fix: legacy shortcut Service tasks → absolute meter point", () => {
+  test("re-anchors only the never-serviced shortcut signature, leaves the rest", () => {
+    db.insert(equipment)
+      .values({ id: "eqmig", name: "Sporster", meterKind: "miles", reading: 600 })
+      .run();
+    const legacy = (id: string, over: Record<string, unknown> = {}) =>
+      db
+        .insert(task)
+        .values({
+          id,
+          equipmentId: "eqmig",
+          name: "Service",
+          kind: "interval",
+          monthsInterval: 12,
+          meterInterval: 1000,
+          baselineMeter: 600, // pinned from the first reading — old semantics
+          ...over,
+        })
+        .run();
+    legacy("mig1"); // the reported shape → must become due AT 1,000 (baseline 0)
+    legacy("mig2"); // has metered work → untouched
+    db.insert(intervention)
+      .values({
+        id: "migi",
+        taskId: "mig2",
+        equipmentId: "eqmig",
+        date: "2026-06-01",
+        meterAt: 600,
+      })
+      .run();
+    legacy("mig3", { name: "Oil change" }); // hand-made task → untouched
+    legacy("mig4", { monthsInterval: 6 }); // not the shortcut's 12-month signature
+    legacy("mig5", { baselineMeter: null }); // baseline not yet pinned → untouched
+
+    // replay the data fix (idempotent UPDATE — already applied at open time)
+    const file = join(import.meta.dir, "../migrations/0003_service_meter_point.sql");
+    db.run(sql.raw(readFileSync(file, "utf8")));
+
+    const baselines = Object.fromEntries(
+      db
+        .select({ id: task.id, baselineMeter: task.baselineMeter })
+        .from(task)
+        .where(eq(task.equipmentId, "eqmig"))
+        .all()
+        .map((r) => [r.id, r.baselineMeter]),
+    );
+    expect(baselines.mig1).toBe(0);
+    expect(baselines.mig2).toBe(600);
+    expect(baselines.mig3).toBe(600);
+    expect(baselines.mig4).toBe(600);
+    expect(baselines.mig5).toBeNull();
+  });
 });

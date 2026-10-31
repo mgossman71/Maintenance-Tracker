@@ -44,6 +44,10 @@ export function TaskForm({
   const [months, setMonths] = useState(task?.monthsInterval?.toString() ?? "");
   const [meter, setMeter] = useState(task?.meterInterval?.toString() ?? "");
   const [expiryDate, setExpiryDate] = useState(task?.currentExpiryDate ?? "");
+  // edit mode: the ABSOLUTE meter point of the next service — owners think
+  // “due at 1,000 miles”, not “interval counted from wherever it sits now”
+  const initialDueAt = task?.due.nextDueMeter?.toString() ?? "";
+  const [dueAt, setDueAt] = useState(initialDueAt);
 
   const meterless = equipment.meterKind === "none";
   const unit = meterless ? null : METER_UNIT[equipment.meterKind as "hours" | "miles"];
@@ -60,13 +64,22 @@ export function TaskForm({
 
   const monthsNum = months === "" ? null : Number(months);
   const meterNum = meter === "" || meterless ? null : Number(meter);
+  const dueAtNum = dueAt === "" ? null : Number(dueAt);
   const badMonths = monthsNum !== null && (!Number.isInteger(monthsNum) || monthsNum < 1);
   const badMeter = meterNum !== null && (!(meterNum > 0) || Number.isNaN(meterNum));
+  // a due point must be positive and can never sit below one full interval
+  // (the count starts at zero or at a service — dueAt − interval ≥ 0)
+  const dueAtDirty = editing && dueAt !== initialDueAt;
+  const badDueAt =
+    dueAtNum === null ||
+    Number.isNaN(dueAtNum) ||
+    dueAtNum <= 0 ||
+    (meterNum !== null && dueAtNum < meterNum);
 
   const intervalMissing = kind === "interval" && monthsNum === null && meterNum === null;
   const expiryMissing = kind === "expiry" && expiryDate === "";
   const nameMissing = name.trim() === "";
-  const invalid = badMonths || badMeter;
+  const invalid = badMonths || badMeter || (dueAtDirty && badDueAt);
   const canSubmit = !nameMissing && !invalid && !intervalMissing && !expiryMissing && !busy;
 
   function submit(e: React.FormEvent) {
@@ -81,6 +94,11 @@ export function TaskForm({
             monthsInterval: monthsNum,
             meterInterval: meterNum,
             currentExpiryDate: null,
+            // "due at 1,000" with a 1,000 interval pins the count at zero —
+            // only sent when the owner actually edited the due point
+            ...(dueAtDirty && meterNum !== null && dueAtNum !== null
+              ? { baselineMeter: dueAtNum - meterNum }
+              : {}),
           }
         : { monthsInterval: null, meterInterval: null, currentExpiryDate: expiryDate }),
     });
@@ -192,6 +210,33 @@ export function TaskForm({
         <p className="text-sm text-muted-foreground">
           {equipment.name} has no meter — this task will be time-based only.
         </p>
+      )}
+      {editing && kind === "interval" && !meterless && (
+        <div className="space-y-2">
+          <Label htmlFor={`${testIdPrefix}-due-at`}>Next service due at ({unit})</Label>
+          <Input
+            id={`${testIdPrefix}-due-at`}
+            type="number"
+            min={0}
+            step="any"
+            value={dueAt}
+            onChange={(e) => setDueAt(e.target.value)}
+            placeholder="1000"
+            className="w-32"
+            data-testid={`${testIdPrefix}-due-at`}
+          />
+          <p className="text-xs text-muted-foreground">
+            The exact meter point — enter <strong>1000</strong> for “due at 1,000 {unit}” no matter
+            where the meter sits. Leave it as it is to keep the current due point; the recurring
+            count stays on “Every”. Once a service is recorded with a reading, that work takes over
+            the anchoring.
+          </p>
+          {dueAtDirty && badDueAt && (
+            <p className="text-sm text-destructive">
+              Enter a positive {unit} point, at least one full interval above zero.
+            </p>
+          )}
+        </div>
       )}
       {kind === "interval" && intervalMissing && (
         <p className="text-sm text-destructive">
