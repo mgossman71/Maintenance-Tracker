@@ -24,14 +24,29 @@ export function staticApp(webDir: string): MiddlewareHandler {
     const candidate = confine(root, path);
     if (candidate !== null) {
       const file = Bun.file(candidate);
-      if (await file.exists()) return new Response(file);
+      if (await file.exists())
+        return new Response(file, {
+          headers: { "Cache-Control": cacheFor(path) },
+        });
     }
 
-    // SPA fallback: client-side routes answer with the shell.
+    // SPA fallback: client-side routes answer with the shell. The shell is
+    // the one file that must NEVER be cached heuristically — it is the only
+    // thing pinning the hashed asset names, so a stale shell resurrects an
+    // entire old build after a deploy.
     const index = Bun.file(join(root, "index.html"));
-    if (await index.exists()) return new Response(index);
+    if (await index.exists())
+      return new Response(index, { headers: { "Cache-Control": "no-cache" } });
     return c.text("Not found", 404);
   };
+}
+
+/**
+ * /assets/* names are content-hashed by the bundler → cache forever;
+ * everything else (the shell, images at stable names) revalidates.
+ */
+export function cacheFor(path: string): string {
+  return path.startsWith("/assets/") ? "public, max-age=31536000, immutable" : "no-cache";
 }
 
 /** URL path → absolute path inside root, or null if it escapes. */

@@ -170,7 +170,7 @@ describe("CHECK constraints reject nonsense at the file level (§6.9 defense in 
   );
 });
 
-describe("migration 0003 data fix: legacy shortcut Service tasks → absolute meter point", () => {
+describe("migration 0003+0004 data fix: legacy shortcut Service tasks → absolute meter point", () => {
   test("re-anchors only the never-serviced shortcut signature, leaves the rest", () => {
     db.insert(equipment)
       .values({ id: "eqmig", name: "Sporster", meterKind: "miles", reading: 600 })
@@ -202,11 +202,13 @@ describe("migration 0003 data fix: legacy shortcut Service tasks → absolute me
       .run();
     legacy("mig3", { name: "Oil change" }); // hand-made task → untouched
     legacy("mig4", { monthsInterval: 6 }); // not the shortcut's 12-month signature
-    legacy("mig5", { baselineMeter: null }); // baseline not yet pinned → untouched
+    legacy("mig5", { baselineMeter: null }); // baseline never pinned → 0004's job
 
-    // replay the data fix (idempotent UPDATE — already applied at open time)
-    const file = join(import.meta.dir, "../migrations/0003_service_meter_point.sql");
-    db.run(sql.raw(readFileSync(file, "utf8")));
+    // replay both data fixes (idempotent UPDATEs — already applied at open time)
+    for (const tag of ["0003_service_meter_point", "0004_service_meter_point_unpinned"]) {
+      const file = join(import.meta.dir, `../migrations/${tag}.sql`);
+      db.run(sql.raw(readFileSync(file, "utf8")));
+    }
 
     const baselines = Object.fromEntries(
       db
@@ -220,6 +222,6 @@ describe("migration 0003 data fix: legacy shortcut Service tasks → absolute me
     expect(baselines.mig2).toBe(600);
     expect(baselines.mig3).toBe(600);
     expect(baselines.mig4).toBe(600);
-    expect(baselines.mig5).toBeNull();
+    expect(baselines.mig5).toBe(0); // 0004: unpinned shortcut tasks are pinned at zero
   });
 });

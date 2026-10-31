@@ -52,6 +52,9 @@ describe("static SPA serving", () => {
     const app = createApp({ webDir: dir });
     const res = await app.request("/");
     expect(res.status).toBe(200);
+    // the shell must revalidate — a heuristically cached shell resurrects
+    // an old build after every deploy (the "I don't see the update" bug)
+    expect(res.headers.get("cache-control")).toBe("no-cache");
     expect(await res.text()).toInclude("Maintenance-Tracker");
   });
 
@@ -59,6 +62,8 @@ describe("static SPA serving", () => {
     const app = createApp({ webDir: dir });
     const res = await app.request("/assets/app.js");
     expect(res.status).toBe(200);
+    // content-hashed names → safe to cache forever
+    expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
     expect(await res.text()).toBe("console.log(1);");
   });
 
@@ -66,6 +71,7 @@ describe("static SPA serving", () => {
     const app = createApp({ webDir: dir });
     const res = await app.request("/equipment/abc/tasks");
     expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-cache"); // the shell, again
     expect(await res.text()).toInclude("Maintenance-Tracker");
   });
 
