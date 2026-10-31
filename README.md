@@ -26,6 +26,10 @@ docker compose up --build
 # SPA on http://127.0.0.1:8787, health on http://127.0.0.1:8787/api/health
 ```
 
+Pre-release note: if a development `mt_data` volume predates a squashed
+migration, reset it: `docker compose down -v && docker compose up -d --build`.
+Never after the first real deployment.
+
 ## Config
 
 Env-first — see [.env.example](./.env.example). `MT_DATA_DIR` holds the

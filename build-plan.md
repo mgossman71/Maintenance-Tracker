@@ -134,6 +134,11 @@ maintenance-tracker/
   `MT_TRUST_PROXY` (enables `X-Forwarded-Proto/For` handling), `TZ`.
   No config-file-next-to-the-binary dance.
 - GitHub Actions CI: typecheck, lint, unit+API tests, Playwright, Docker build.
+- **Migrations are append-only from the first launch on any real database.**
+  `0000_init` was legitimately squashed pre-release (nothing deployed), but a
+  squashed number replayed against an existing volume = crash-loop
+  (`table already exists`). Reset a stale dev volume with
+  `docker compose down -v`. After the first public release, never squash.
 - **Public-repo discipline from commit one**: `data/` (db, uploads) and `.env`
   in `.gitignore` before anything else ships; "nothing sensitive ever
   committed" is a gate in the final security checklist.

@@ -23,8 +23,9 @@ COPY --from=build /app/apps/server ./apps/server
 COPY --from=build /app/apps/web/dist ./apps/web/dist
 COPY --from=build /app/packages ./packages
 
-# Non-root (uid 1000) per build-plan.md §6.8
-RUN id bun >/dev/null 2>&1 || useradd -m -u 1000 bun \
+# Non-root (uid 1000) per build-plan.md §6.8. NOTE: explicit if/ — with
+# `id bun || useradd && chown` the && chain is skipped when `id` succeeds.
+RUN if ! id bun >/dev/null 2>&1; then useradd -m -u 1000 bun; fi \
   && mkdir -p /app/data \
   && chown -R bun:bun /app
 USER bun
