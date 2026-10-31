@@ -80,6 +80,8 @@ export const equipmentCreateSchema = z.strictObject({
   name: z.string().min(1).max(200),
   description: z.string().max(2000).nullish(),
   icon: z.string().max(16).optional(),
+  /** Model/build year — optional; the UI offers 1900..next year. */
+  year: z.number().int().min(1900).max(2100).nullish(),
   meterKind: meterKindSchema.optional(),
 });
 export type EquipmentCreate = z.infer<typeof equipmentCreateSchema>;
@@ -88,6 +90,7 @@ export const equipmentUpdateSchema = z.strictObject({
   name: z.string().min(1).max(200).optional(),
   description: z.string().max(2000).nullish(),
   icon: z.string().max(16).optional(),
+  year: z.number().int().min(1900).max(2100).nullish(),
   /** Rejected with meter_kind_immutable once any reading exists (§4). */
   meterKind: meterKindSchema.optional(),
 });

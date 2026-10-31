@@ -15,6 +15,8 @@ export const equipment = sqliteTable(
     name: text("name").notNull(),
     description: text("description"),
     icon: text("icon").notNull().default(""),
+    /** Model/build year — free-standing fact, optional. */
+    year: integer("year"),
     meterKind: text("meter_kind").notNull().default("none"),
     reading: real("reading"),
     readingUpdatedAt: text("reading_updated_at"), // YYYY-MM-DD

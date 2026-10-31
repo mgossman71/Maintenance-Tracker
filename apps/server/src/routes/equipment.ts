@@ -108,11 +108,14 @@ export function equipmentRoutes(deps: AppDeps) {
     const parsed = equipmentUpdateSchema.safeParse(await readBody(c));
     if (!parsed.success) return failValidation(c, parsed.error);
 
-    const { name, description, icon, meterKind } = parsed.data;
-    const patch: Partial<Pick<EquipmentRow, "name" | "description" | "icon" | "meterKind">> = {};
+    const { name, description, icon, year, meterKind } = parsed.data;
+    const patch: Partial<
+      Pick<EquipmentRow, "name" | "description" | "icon" | "year" | "meterKind">
+    > = {};
     if (name !== undefined) patch.name = name;
     if (description !== undefined) patch.description = description ?? null;
     if (icon !== undefined) patch.icon = icon;
+    if (year !== undefined) patch.year = year ?? null;
     if (meterKind !== undefined && meterKind !== eq.meterKind) {
       // §4: meter kind is immutable once readings exist.
       const hasReadings =

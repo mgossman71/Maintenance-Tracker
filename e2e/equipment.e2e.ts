@@ -20,7 +20,7 @@ test.describe("equipment CRUD + meters", () => {
     await expect(page.getByTestId("create-submit")).toBeDisabled();
 
     await page.getByTestId("create-name").fill("Daily Driver");
-    await page.getByTestId("create-icon").fill("🚗");
+    await page.getByTestId("create-icon").selectOption("🚗");
     await page.getByTestId("create-meter").selectOption("miles");
     await page.getByTestId("create-submit").click();
 
@@ -110,6 +110,37 @@ test.describe("equipment CRUD + meters", () => {
     await expect(page.getByTestId("reading-input")).toHaveCount(0);
 
     // danger zone deletes and navigates back to the (empty) list
+    await page.getByTestId("delete-open").click();
+    await page.getByTestId("confirm-button").click();
+    await expect(page).toHaveURL(/\/equipment$/);
+    await expect(page.getByText("No equipment yet")).toBeVisible();
+  });
+
+  test("year dropdown + service interval → a real Service task", async ({ page }) => {
+    await page.goto("/equipment");
+    await page.getByTestId("add-equipment-button").click();
+    await page.getByTestId("create-name").fill("Field Tractor");
+    await page.getByTestId("create-icon").selectOption("🚜");
+    await page.getByTestId("create-year").selectOption("2019");
+    await page.getByTestId("create-desc").fill("garage-kept tractor");
+
+    // the interval field appears with the unit and speaks the unit's word
+    await page.getByTestId("create-meter").selectOption("miles");
+    await expect(page.getByText("Miles until next service")).toBeVisible();
+    await page.getByTestId("create-interval").fill("5000");
+    await page.getByTestId("create-submit").click();
+
+    await page.getByRole("link", { name: /Field Tractor/ }).click();
+    await expect(page.getByText("2019 · garage-kept tractor")).toBeVisible();
+
+    // the interval became an editable task — 5,000 miles OR 12 months
+    await page.getByTestId("tab-tasks").click();
+    await expect(
+      page.getByTestId("tasks-pane").locator("li").filter({ hasText: "Service" }),
+    ).toBeVisible();
+
+    // clean up the shared vault
+    await page.getByTestId("tab-info").click();
     await page.getByTestId("delete-open").click();
     await page.getByTestId("confirm-button").click();
     await expect(page).toHaveURL(/\/equipment$/);

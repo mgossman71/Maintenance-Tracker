@@ -1,7 +1,8 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Boxes, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
-import type { EquipmentRow } from "@/api/client";
+import { api, type EquipmentRow } from "@/api/client";
 import { EmptyState, PageError } from "@/components/empty-state";
 import { EquipmentForm, type EquipmentFormValues } from "@/components/equipment-form";
 import { Button } from "@/components/ui/button";
@@ -71,15 +72,8 @@ function EquipmentRowCard({ equipment: eq }: { equipment: EquipmentRow }) {
   const mutations = useEquipmentMutations();
 
   function save(values: EquipmentFormValues) {
-    mutations.update.mutate({
-      id: eq.id,
-      patch: {
-        name: values.name,
-        description: values.description,
-        icon: values.icon,
-        meterKind: values.meterKind,
-      },
-    });
+    const { serviceInterval: _si, ...patch } = values;
+    mutations.update.mutate({ id: eq.id, patch });
     setEditing(false);
   }
 
@@ -150,10 +144,34 @@ function EquipmentRowCard({ equipment: eq }: { equipment: EquipmentRow }) {
 }
 
 function CreateEquipmentDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const mutations = useEquipmentMutations();
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
 
-  function create(values: EquipmentFormValues) {
-    mutations.create.mutate(values, { onSuccess: onClose });
+  async function create(values: EquipmentFormValues) {
+    setBusy(true);
+    setError(null);
+    try {
+      const { serviceInterval, ...input } = values;
+      const eq = await api.equipment.create(input);
+      // the form's interval is a shortcut for a real task — N units OR
+      // 12 months, whichever comes first (manufacturer practice), and the
+      // task stays editable in the Tasks tab
+      if (serviceInterval != null && input.meterKind !== undefined && input.meterKind !== "none") {
+        await api.equipment.createTask(eq.id, {
+          name: "Service",
+          kind: "interval",
+          monthsInterval: 12,
+          meterInterval: serviceInterval,
+        });
+      }
+      await qc.invalidateQueries({ queryKey: ["equipment"] });
+      void qc.invalidateQueries({ queryKey: ["dashboard"] });
+      onClose();
+    } catch (err) {
+      setError(err);
+      setBusy(false);
+    }
   }
 
   return (
@@ -161,9 +179,9 @@ function CreateEquipmentDialog({ open, onClose }: { open: boolean; onClose: () =
       {/* mounted only while open so the form starts blank every time */}
       {open && (
         <EquipmentForm
-          busy={mutations.create.isPending}
-          error={mutations.create.error}
-          onSubmit={create}
+          busy={busy}
+          error={error}
+          onSubmit={(v) => void create(v)}
           onCancel={onClose}
           testIdPrefix="create"
         />

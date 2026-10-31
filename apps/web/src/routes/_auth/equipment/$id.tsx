@@ -104,8 +104,9 @@ function InfoPane({ eq }: { eq: EquipmentRow }) {
   const mutations = useEquipmentMutations();
 
   function save(values: EquipmentFormValues) {
+    const { serviceInterval: _si, ...patch } = values;
     mutations.update.mutate(
-      { id: eq.id, patch: values },
+      { id: eq.id, patch },
       {
         onSuccess: () => setEditing(false),
         onError: (err) => {
@@ -125,7 +126,13 @@ function InfoPane({ eq }: { eq: EquipmentRow }) {
         <CardHeader className="flex-row items-start justify-between">
           <div>
             <CardTitle className="text-base">Details</CardTitle>
-            {eq.description && <CardDescription>{eq.description}</CardDescription>}
+            {(eq.year !== null || eq.description !== null) && (
+              <CardDescription>
+                {[eq.year?.toString(), eq.description]
+                  .filter((s) => s != null && s !== "")
+                  .join(" · ")}
+              </CardDescription>
+            )}
           </div>
           <Button
             variant="outline"

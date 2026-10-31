@@ -449,3 +449,49 @@ describe("interventions + meter/expiry rules", () => {
     expect(history).toHaveLength(0);
   });
 });
+
+describe("equipment year", () => {
+  let t: TestApp;
+  beforeAll(async () => {
+    t = buildTestApp();
+    await t.setupAndLogin();
+  });
+  afterAll(() => t.close());
+
+  test("create carries the year; absent means null", async () => {
+    const withYear = await makeEquipment(t, { name: "Day Truck", year: 1968 });
+    const row = await (await t.call(`/api/equipment/${withYear.id}`, { auth: true })).json();
+    expect(row.year).toBe(1968);
+
+    const bare = await makeEquipment(t, { name: "No Year" });
+    const bareRow = await (await t.call(`/api/equipment/${bare.id}`, { auth: true })).json();
+    expect(bareRow.year).toBeNull();
+  });
+
+  test("patch sets, clears, and validates the year", async () => {
+    const eq = await makeEquipment(t, { name: "Patched Year" });
+
+    await t.call(`/api/equipment/${eq.id}`, {
+      method: "PATCH",
+      auth: true,
+      body: JSON.stringify({ year: 2021 }),
+    });
+    let row = await (await t.call(`/api/equipment/${eq.id}`, { auth: true })).json();
+    expect(row.year).toBe(2021);
+
+    await t.call(`/api/equipment/${eq.id}`, {
+      method: "PATCH",
+      auth: true,
+      body: JSON.stringify({ year: null }),
+    });
+    row = await (await t.call(`/api/equipment/${eq.id}`, { auth: true })).json();
+    expect(row.year).toBeNull();
+
+    const bad = await t.call(`/api/equipment/${eq.id}`, {
+      method: "PATCH",
+      auth: true,
+      body: JSON.stringify({ year: 1899 }),
+    });
+    expect(bad.status).toBe(400);
+  });
+});

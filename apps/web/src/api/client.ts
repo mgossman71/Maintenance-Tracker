@@ -66,6 +66,7 @@ export interface EquipmentRow {
   name: string;
   description: string | null;
   icon: string;
+  year: number | null;
   meterKind: MeterKind;
   reading: number | null;
   readingUpdatedAt: string | null;
@@ -76,6 +77,7 @@ export interface EquipmentCreateInput {
   name: string;
   description?: string | null;
   icon?: string;
+  year?: number | null;
   meterKind?: MeterKind;
 }
 
@@ -83,6 +85,7 @@ export interface EquipmentUpdateInput {
   name?: string;
   description?: string | null;
   icon?: string;
+  year?: number | null;
   meterKind?: MeterKind;
 }
 

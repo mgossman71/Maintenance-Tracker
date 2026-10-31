@@ -9,13 +9,62 @@ export interface EquipmentFormValues {
   name: string;
   description: string | null;
   icon: string;
+  year: number | null;
   meterKind: MeterKind;
+  /**
+   * Create-mode shortcut: N miles/hours until the next service. The parent
+   * turns it into a real "Service" task (N units OR 12 months, whichever
+   * comes first) right after creating the equipment.
+   */
+  serviceInterval?: number | null;
 }
 
 const METER_KINDS: { value: MeterKind; label: string }[] = [
   { value: "none", label: "No meter — time-based only (house, boiler)" },
-  { value: "miles", label: "Mileometer — miles (cars, mowers)" },
-  { value: "hours", label: "Hour meter — hours (engines, machines)" },
+  { value: "miles", label: "Miles — cars, trucks, mowers" },
+  { value: "hours", label: "Hours — engines, machines, boats" },
+];
+
+/** Icons offered on the dropdown — one per kind of thing people own. */
+const ICON_CHOICES = [
+  "🚗",
+  "🚙",
+  "🚐",
+  "🚑",
+  "🚒",
+  "🚓",
+  "🛻",
+  "🚚",
+  "🚌",
+  "🏎️",
+  "🚜",
+  "🏍️",
+  "🛵",
+  "🚲",
+  "🚤",
+  "⛵",
+  "🛥️",
+  "🚢",
+  "⚙️",
+  "🔌",
+  "🔧",
+  "🛠️",
+  "⛽",
+  "🔥",
+  "❄️",
+  "💧",
+  "🏠",
+  "🏡",
+  "🏢",
+  "🏚️",
+  "🌳",
+  "🍂",
+  "🪚",
+  "🧯",
+  "🚪",
+  "🪟",
+  "🚿",
+  "🛞",
 ];
 
 /**
@@ -41,13 +90,27 @@ export function EquipmentForm({
   onCancel: () => void;
   testIdPrefix: string;
 }) {
+  const editing = equipment !== undefined;
   const [name, setName] = useState(equipment?.name ?? "");
-  const [icon, setIcon] = useState(equipment?.icon ?? "");
+  const [icon, setIcon] = useState(
+    equipment?.icon != null && equipment.icon !== "" ? equipment.icon : (ICON_CHOICES[0] ?? ""),
+  );
+  const [year, setYear] = useState(equipment?.year?.toString() ?? "");
   const [description, setDescription] = useState(equipment?.description ?? "");
   const [meterKind, setMeterKind] = useState<MeterKind>(equipment?.meterKind ?? "none");
+  const [serviceInterval, setServiceInterval] = useState("");
   const [touched, setTouched] = useState(false);
 
   const nameError = touched && name.trim() === "" ? "Name is required." : null;
+  const unit = meterKind === "miles" ? "miles" : meterKind === "hours" ? "hours" : null;
+  const intervalNum = serviceInterval === "" ? null : Number(serviceInterval);
+  const badInterval = intervalNum !== null && !(intervalNum > 0);
+
+  // an existing icon that isn't in the curated list still gets shown
+  const choices =
+    editing && equipment.icon !== "" && !ICON_CHOICES.includes(equipment.icon)
+      ? [equipment.icon, ...ICON_CHOICES]
+      : ICON_CHOICES;
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -56,24 +119,35 @@ export function EquipmentForm({
     onSubmit({
       name: name.trim(),
       description: description.trim() === "" ? null : description.trim(),
-      icon: icon.trim(),
+      icon,
+      year: year === "" ? null : Number(year),
       meterKind,
+      serviceInterval: !editing && unit !== null ? intervalNum : null,
     });
   }
+
+  const selectClass =
+    "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60";
 
   return (
     <form className="space-y-4" onSubmit={submit} data-testid={`${testIdPrefix}-form`}>
       <div className="flex gap-3">
         <div className="space-y-2">
           <Label htmlFor={`${testIdPrefix}-icon`}>Icon</Label>
-          <Input
+          <select
             id={`${testIdPrefix}-icon`}
             value={icon}
-            onChange={(e) => setIcon(e.target.value.slice(0, 16))}
-            placeholder="🚗"
-            className="w-20 text-center text-xl"
+            onChange={(e) => setIcon(e.target.value ?? "")}
             data-testid={`${testIdPrefix}-icon`}
-          />
+            className={`${selectClass} w-20 text-center text-lg`}
+            aria-label="Icon"
+          >
+            {choices.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="flex-1 space-y-2">
           <Label htmlFor={`${testIdPrefix}-name`}>Name</Label>
@@ -91,27 +165,46 @@ export function EquipmentForm({
         </div>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor={`${testIdPrefix}-desc`}>Description</Label>
-        <Input
-          id={`${testIdPrefix}-desc`}
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="2019 Tacoma, garaged"
-          maxLength={2000}
-          data-testid={`${testIdPrefix}-desc`}
-        />
+      <div className="flex gap-3">
+        <div className="space-y-2">
+          <Label htmlFor={`${testIdPrefix}-year`}>Year</Label>
+          <select
+            id={`${testIdPrefix}-year`}
+            value={year}
+            onChange={(e) => setYear(e.target.value ?? "")}
+            data-testid={`${testIdPrefix}-year`}
+            className={`${selectClass} w-24`}
+          >
+            <option value="">—</option>
+            {yearChoices().map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex-1 space-y-2">
+          <Label htmlFor={`${testIdPrefix}-desc`}>Description</Label>
+          <Input
+            id={`${testIdPrefix}-desc`}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="2019 Tacoma, garaged"
+            maxLength={2000}
+            data-testid={`${testIdPrefix}-desc`}
+          />
+        </div>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor={`${testIdPrefix}-meter`}>Meter</Label>
+        <Label htmlFor={`${testIdPrefix}-meter`}>Service Interval</Label>
         <select
           id={`${testIdPrefix}-meter`}
           value={meterKind}
           disabled={meterKindLocked || busy}
-          onChange={(e) => setMeterKind(e.target.value as MeterKind)}
+          onChange={(e) => setMeterKind((e.target.value ?? "none") as MeterKind)}
           data-testid={`${testIdPrefix}-meter`}
-          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+          className={selectClass}
         >
           {METER_KINDS.map((k) => (
             <option key={k.value} value={k.value}>
@@ -125,6 +218,44 @@ export function EquipmentForm({
             Locked at{" "}
             {equipment && equipment.meterKind !== "none" ? METER_UNIT[equipment.meterKind] : "none"}{" "}
             — readings already exist for this equipment.
+          </p>
+        )}
+        {!editing && unit !== null && (
+          <div className="space-y-2 pt-1">
+            <Label htmlFor={`${testIdPrefix}-interval`}>
+              {unit === "miles" ? "Miles" : "Hours"} until next service
+            </Label>
+            <div className="flex items-center gap-3">
+              <Input
+                id={`${testIdPrefix}-interval`}
+                type="number"
+                min={1}
+                step="any"
+                value={serviceInterval}
+                onChange={(e) => setServiceInterval(e.target.value)}
+                placeholder={unit === "miles" ? "5000" : "100"}
+                className="w-32"
+                data-testid={`${testIdPrefix}-interval`}
+              />
+              <p className="text-xs text-muted-foreground">
+                Creates a “Service” task due every {unit} <em>or</em> 12 months — whichever comes
+                first. Edit it later in the Tasks tab.
+              </p>
+            </div>
+            {badInterval && (
+              <p
+                className="text-sm text-destructive"
+                data-testid={`${testIdPrefix}-interval-error`}
+              >
+                The interval must be a positive number of {unit}.
+              </p>
+            )}
+          </div>
+        )}
+        {editing && (
+          <p className="text-sm text-muted-foreground">
+            The unit this equipment counts services in. Intervals live on each task — set them in
+            the Tasks tab.
           </p>
         )}
       </div>
@@ -143,7 +274,7 @@ export function EquipmentForm({
         </Button>
         <Button
           type="submit"
-          disabled={busy || name.trim() === ""}
+          disabled={busy || name.trim() === "" || badInterval}
           data-testid={`${testIdPrefix}-submit`}
         >
           {busy ? "Saving…" : equipment ? "Save changes" : "Add equipment"}
@@ -151,6 +282,12 @@ export function EquipmentForm({
       </div>
     </form>
   );
+}
+
+/** 1900 … next year (a future model year is normal), computed per render. */
+export function yearChoices(): number[] {
+  const top = new Date().getFullYear() + 1;
+  return Array.from({ length: top - 1900 + 1 }, (_, i) => top - i);
 }
 
 /** Server error surfaced under the form; parent passes its mutation error. */

@@ -89,13 +89,20 @@ export function getEquipment(db: Db, id: string): EquipmentRow | null {
 
 export function insertEquipment(
   db: Db,
-  data: { name: string; description?: string | null; icon?: string; meterKind?: string },
+  data: {
+    name: string;
+    description?: string | null;
+    icon?: string;
+    year?: number | null;
+    meterKind?: string;
+  },
 ): EquipmentRow {
   const row = {
     id: randomUUID(),
     name: data.name,
     description: data.description ?? null,
     icon: data.icon ?? "",
+    year: data.year ?? null,
     meterKind: data.meterKind ?? "none",
   };
   db.insert(equipment).values(row).run();
