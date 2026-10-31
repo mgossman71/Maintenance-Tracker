@@ -1,4 +1,9 @@
-import type { AuthStatus, ErrorEnvelope } from "@maintenance-tracker/shared";
+import type {
+  AuthStatus,
+  ErrorEnvelope,
+  TaskPresetInfo,
+  TaskWithDue,
+} from "@maintenance-tracker/shared";
 
 /** Typed API client — cookies ride along, every error surfaces as ApiError. */
 export class ApiError extends Error {
@@ -68,6 +73,23 @@ export interface EquipmentUpdateInput {
   meterKind?: MeterKind;
 }
 
+export interface TaskCreateInput {
+  name: string;
+  description?: string | null;
+  kind: "interval" | "expiry";
+  monthsInterval?: number | null;
+  meterInterval?: number | null;
+  currentExpiryDate?: string | null;
+}
+
+export type TaskUpdateInput = Partial<Omit<TaskCreateInput, "kind">>;
+
+export interface TaskPresetInput {
+  name: string;
+  monthsInterval?: number | null;
+  meterInterval?: number | null;
+}
+
 export const api = {
   status: () => request<AuthStatus>("/api/auth/status"),
   setup: (password: string) =>
@@ -100,5 +122,21 @@ export const api = {
           ...(opts?.correct ? { correct: true } : {}),
         },
       }),
+    tasks: (id: string) => request<TaskWithDue[]>(`/api/equipment/${id}/tasks`),
+    createTask: (id: string, input: TaskCreateInput) =>
+      request<TaskWithDue>(`/api/equipment/${id}/tasks`, { method: "POST", body: input }),
+  },
+  tasks: {
+    update: (id: string, patch: TaskUpdateInput) =>
+      request<unknown>(`/api/tasks/${id}`, { method: "PATCH", body: patch }),
+    remove: (id: string) => request<void>(`/api/tasks/${id}`, { method: "DELETE" }),
+  },
+  presets: {
+    list: () => request<TaskPresetInfo[]>("/api/presets"),
+    create: (input: TaskPresetInput) =>
+      request<TaskPresetInfo>("/api/presets", { method: "POST", body: input }),
+    update: (id: string, patch: Partial<TaskPresetInput>) =>
+      request<TaskPresetInfo>(`/api/presets/${id}`, { method: "PATCH", body: patch }),
+    remove: (id: string) => request<void>(`/api/presets/${id}`, { method: "DELETE" }),
   },
 };

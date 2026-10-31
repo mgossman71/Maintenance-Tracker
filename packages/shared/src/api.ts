@@ -153,6 +153,22 @@ export const taskUpdateSchema = z
   });
 export type TaskUpdate = z.infer<typeof taskUpdateSchema>;
 
+// ---- task presets (task library) ------------------------------------------------
+
+export const taskPresetCreateSchema = z.strictObject({
+  name: z.string().min(1).max(200),
+  monthsInterval: z.number().int().min(1).nullish(),
+  meterInterval: z.number().positive().nullish(),
+});
+export type TaskPresetCreate = z.infer<typeof taskPresetCreateSchema>;
+
+export const taskPresetUpdateSchema = z.strictObject({
+  name: z.string().min(1).max(200).optional(),
+  monthsInterval: z.number().int().min(1).nullish(),
+  meterInterval: z.number().positive().nullish(),
+});
+export type TaskPresetUpdate = z.infer<typeof taskPresetUpdateSchema>;
+
 // ---- interventions -------------------------------------------------------------
 
 export const interventionCreateSchema = z
@@ -210,4 +226,13 @@ export interface TaskWithDue {
   meterInterval: number | null;
   currentExpiryDate: string | null;
   due: DueStatusInfo;
+}
+
+/** The task library shape over the wire (a task_preset row). */
+export interface TaskPresetInfo {
+  id: string;
+  name: string;
+  monthsInterval: number | null;
+  meterInterval: number | null;
+  sortOrder: number;
 }

@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { MonitorSmartphone, Moon, Sun } from "lucide-react";
+import { TaskLibraryPane } from "@/components/task-library-pane";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { type ThemeMode, useTheme } from "@/lib/theme";
 import { useTitle } from "@/lib/use-title";
@@ -20,7 +21,7 @@ function SettingsPage() {
       <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
       <AppearancePane />
       <ComingSoonPane title="Security" body="Change master password — M8." />
-      <ComingSoonPane title="Task library" body="Editable presets with seeds — M5/M8." />
+      <TaskLibraryPane />
       <Card>
         <CardHeader>
           <CardTitle className="text-base">About</CardTitle>

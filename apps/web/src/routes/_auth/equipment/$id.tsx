@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ApiError, type EquipmentRow } from "@/api/client";
 import { PageError } from "@/components/empty-state";
 import { EquipmentForm, type EquipmentFormValues } from "@/components/equipment-form";
+import { TasksPane } from "@/components/tasks-pane";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog, Dialog } from "@/components/ui/dialog";
@@ -76,7 +77,7 @@ function EquipmentDetailPage() {
       </div>
 
       {tab === "info" && <InfoPane eq={eq} />}
-      {tab === "tasks" && <PlaceholderPane what="Tasks" milestone="M5" />}
+      {tab === "tasks" && <TasksPane equipment={eq} />}
       {tab === "history" && <PlaceholderPane what="History" milestone="M6" />}
       {tab === "documents" && <PlaceholderPane what="Documents" milestone="M6" />}
     </section>

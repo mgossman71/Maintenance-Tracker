@@ -1,4 +1,4 @@
-import type { DatabaseHandle } from "@maintenance-tracker/db";
+import { type DatabaseHandle, seedTaskPresetsIfEmpty } from "@maintenance-tracker/db";
 import { todayInTz } from "@maintenance-tracker/shared";
 import { Hono } from "hono";
 import type { LoginGuard } from "./auth/ratelimit.ts";
@@ -7,6 +7,7 @@ import { csrfProtection, requireSession } from "./http/middleware.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { equipmentRoutes } from "./routes/equipment.ts";
 import { interventionsRoutes } from "./routes/interventions.ts";
+import { presetsRoutes } from "./routes/presets.ts";
 import { tasksRoutes } from "./routes/tasks.ts";
 import { staticApp } from "./static.ts";
 
@@ -58,6 +59,7 @@ export function createApp({ webDir, deps }: AppOptions = {}) {
     app.route("/api/auth", authRoutes(deps));
     app.route("/api/equipment", equipmentRoutes(deps));
     app.route("/api/tasks", tasksRoutes(deps));
+    app.route("/api/presets", presetsRoutes(deps));
     app.route("/api/interventions", interventionsRoutes(deps));
   }
 
@@ -87,6 +89,9 @@ export function makeDeps(
 ): AppDeps {
   const clock = options.clock ?? (() => Date.now());
   const tz = options.tz ?? "UTC";
+  // first-run task-library seeding (settings-keyed, idempotent) — every
+  // boot path gets it, production and the in-process test kit alike
+  seedTaskPresetsIfEmpty(db);
   return {
     db,
     session: options.session,

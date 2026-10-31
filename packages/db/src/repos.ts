@@ -6,7 +6,15 @@
 import { randomUUID } from "node:crypto";
 import { eq, lt } from "drizzle-orm";
 import type { DatabaseHandle } from "./client.ts";
-import { appSettings, attachment, equipment, intervention, session, task } from "./schema.ts";
+import {
+  appSettings,
+  attachment,
+  equipment,
+  intervention,
+  session,
+  task,
+  taskPreset,
+} from "./schema.ts";
 
 type Db = DatabaseHandle["db"];
 
@@ -224,3 +232,108 @@ export function deleteIntervention(db: Db, id: string): void {
 export function getAttachment(db: Db, id: string): typeof attachment.$inferSelect | null {
   return db.select().from(attachment).where(eq(attachment.id, id)).get() ?? null;
 }
+
+// ---- task presets (the editable task library) -------------------------------------
+
+export type TaskPresetRow = typeof taskPreset.$inferSelect;
+
+export function listTaskPresets(db: Db): TaskPresetRow[] {
+  // stable order: sort_order, then name for ties (schema default 0)
+  return db
+    .select()
+    .from(taskPreset)
+    .all()
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+}
+
+export function getTaskPreset(db: Db, id: string): TaskPresetRow | null {
+  return db.select().from(taskPreset).where(eq(taskPreset.id, id)).get() ?? null;
+}
+
+export function insertTaskPreset(
+  db: Db,
+  data: {
+    name: string;
+    monthsInterval?: number | null;
+    meterInterval?: number | null;
+    sortOrder?: number;
+  },
+): TaskPresetRow {
+  const row = {
+    id: randomUUID(),
+    name: data.name,
+    monthsInterval: data.monthsInterval ?? null,
+    meterInterval: data.meterInterval ?? null,
+    sortOrder: data.sortOrder ?? nextPresetSortOrder(db),
+  };
+  db.insert(taskPreset).values(row).run();
+  const created = getTaskPreset(db, row.id);
+  if (created === null) throw new Error("insert failed to persist task preset");
+  return created;
+}
+
+export function updateTaskPreset(
+  db: Db,
+  id: string,
+  patch: Partial<{
+    name: string;
+    monthsInterval: number | null;
+    meterInterval: number | null;
+    sortOrder: number;
+  }>,
+): TaskPresetRow | null {
+  db.update(taskPreset).set(patch).where(eq(taskPreset.id, id)).run();
+  return getTaskPreset(db, id);
+}
+
+export function deleteTaskPreset(db: Db, id: string): void {
+  db.delete(taskPreset).where(eq(taskPreset.id, id)).run();
+}
+
+export function nextPresetSortOrder(db: Db): number {
+  const rows = listTaskPresets(db);
+  return rows.reduce((max, p) => Math.max(max, p.sortOrder), 0) + 10;
+}
+
+/**
+ * First-run seeding (build-plan §9 M5/M8): generic car/boat/home starters,
+ * ONCE — guarded by a settings key so a deliberately emptied library stays
+ * empty. Idempotent; safe to call on every boot.
+ */
+export function seedTaskPresetsIfEmpty(db: Db): boolean {
+  if (getSetting(db, "presets_seeded_at") !== null) return false;
+  for (const p of STARTER_PRESETS) {
+    insertTaskPreset(db, { ...p, sortOrder: 0 });
+  }
+  setSetting(db, "presets_seeded_at", new Date().toISOString());
+  return true;
+}
+
+const STARTER_PRESETS: {
+  name: string;
+  monthsInterval: number | null;
+  meterInterval: number | null;
+}[] = [
+  // car
+  { name: "Oil change", monthsInterval: 12, meterInterval: 5000 },
+  { name: "Tire rotation", monthsInterval: 6, meterInterval: 5000 },
+  { name: "Engine air filter", monthsInterval: 12, meterInterval: 12000 },
+  { name: "Cabin air filter", monthsInterval: 12, meterInterval: null },
+  { name: "Wiper blades", monthsInterval: 12, meterInterval: null },
+  { name: "Coolant flush", monthsInterval: 24, meterInterval: 30000 },
+  { name: "Transmission fluid", monthsInterval: 36, meterInterval: 30000 },
+  { name: "Brake fluid", monthsInterval: 24, meterInterval: null },
+  // boat
+  { name: "Impeller", monthsInterval: 24, meterInterval: 250 },
+  { name: "Engine oil change (boat)", monthsInterval: 12, meterInterval: 100 },
+  { name: "Fuel filter (boat)", monthsInterval: 12, meterInterval: 100 },
+  { name: "Zinc anodes", monthsInterval: 12, meterInterval: null },
+  { name: "Bottom paint", monthsInterval: 12, meterInterval: null },
+  { name: "Battery (boat)", monthsInterval: 48, meterInterval: null },
+  // home
+  { name: "HVAC filter", monthsInterval: 3, meterInterval: null },
+  { name: "Smoke & CO alarm batteries", monthsInterval: 12, meterInterval: null },
+  { name: "Water heater flush", monthsInterval: 24, meterInterval: null },
+  { name: "Gutter cleaning", monthsInterval: 12, meterInterval: null },
+  { name: "Caulk inspection", monthsInterval: 24, meterInterval: null },
+];
