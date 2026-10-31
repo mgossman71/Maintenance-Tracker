@@ -4,7 +4,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { CheckCircle2, LayoutDashboard, Pencil, Plus } from "lucide-react";
 import { useState } from "react";
 import { ApiError, api, type EquipmentRow, type TaskUpdateInput } from "@/api/client";
-import { DueChip, dashboardLine } from "@/components/due";
+import { DueChip, DueHeadlineChip, dashboardParts } from "@/components/due";
 import { EmptyState, PageError } from "@/components/empty-state";
 import { InterventionForm, type InterventionFormValues } from "@/components/intervention-form";
 import { TaskForm } from "@/components/task-form";
@@ -40,13 +40,31 @@ function DashboardPage() {
     equipment: DashboardEquipment;
     task: TaskWithDue;
   } | null>(null);
+  // …or set one for the first time, right from a block's banner
+  const [addTarget, setAddTarget] = useState<DashboardEquipment | null>(null);
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: ["dashboard"] });
+    void qc.invalidateQueries({ queryKey: ["equipment"] });
+  };
   const updateTask = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: TaskUpdateInput }) =>
       api.tasks.update(id, patch),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["dashboard"] });
-      void qc.invalidateQueries({ queryKey: ["equipment"] });
+      refresh();
       setEditTarget(null);
+    },
+  });
+  const createTask = useMutation({
+    mutationFn: ({
+      id,
+      input,
+    }: {
+      id: string;
+      input: Parameters<typeof api.equipment.createTask>[1];
+    }) => api.equipment.createTask(id, input),
+    onSuccess: () => {
+      refresh();
+      setAddTarget(null);
     },
   });
 
@@ -113,6 +131,7 @@ function DashboardPage() {
           block={block}
           onDone={(taskId) => setDoneTarget({ equipment: block, taskId })}
           onEdit={(task) => setEditTarget({ equipment: block, task })}
+          onAdd={() => setAddTarget(block)}
         />
       ))}
 
@@ -148,6 +167,24 @@ function DashboardPage() {
           />
         )}
       </Dialog>
+
+      <Dialog
+        open={addTarget !== null}
+        onClose={() => setAddTarget(null)}
+        title={addTarget ? `Service interval — ${addTarget.name}` : "Add task"}
+      >
+        {addTarget !== null && (
+          <TaskForm
+            equipment={addTarget as unknown as EquipmentRow}
+            presets={presets.data ?? []}
+            busy={createTask.isPending}
+            error={createTask.error}
+            onSubmit={(values) => createTask.mutate({ id: addTarget.id, input: values })}
+            onCancel={() => setAddTarget(null)}
+            testIdPrefix="dash-add"
+          />
+        )}
+      </Dialog>
     </section>
   );
 }
@@ -156,25 +193,35 @@ function DashboardBlock({
   block,
   onDone,
   onEdit,
+  onAdd,
 }: {
   block: DashboardEquipment;
   onDone: (taskId: string) => void;
   onEdit: (task: TaskWithDue) => void;
+  onAdd: () => void;
 }) {
   const unit = block.meterKind === "miles" ? "mi" : block.meterKind === "hours" ? "h" : null;
+  // meter equipment is only truly tracked once something counts the meter
+  const trackedByMeter = block.tasks.some((t) => t.meterInterval !== null);
+  const untracked =
+    (block.meterKind !== "none" && !trackedByMeter) ||
+    (block.meterKind === "none" && block.tasks.length === 0);
 
   return (
     <Card data-testid={`dash-block-${block.id}`}>
       <CardContent className="p-0">
-        <div className="flex items-baseline justify-between gap-2 px-4 pt-4">
-          <Link
-            to="/equipment/$id"
-            params={{ id: block.id }}
-            className="font-semibold hover:underline"
-          >
-            {block.icon !== "" ? `${block.icon} ` : ""}
-            {block.name}
-          </Link>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <Link
+              to="/equipment/$id"
+              params={{ id: block.id }}
+              className="font-semibold hover:underline"
+            >
+              {block.icon !== "" ? `${block.icon} ` : ""}
+              {block.name}
+            </Link>
+            <DueHeadlineChip tasks={block.tasks} unit={unit} />
+          </div>
           <span className="text-sm text-muted-foreground">
             {block.meterKind === "none"
               ? "no meter"
@@ -186,63 +233,78 @@ function DashboardBlock({
 
         {block.staleMeter && <StaleMeterBanner block={block} />}
 
-        {block.tasks.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-muted-foreground">
-            No tasks yet — add some from the equipment page.
-          </p>
-        ) : (
+        {untracked && (
+          <div
+            className="mx-4 mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-300/60 bg-amber-50 p-3 text-sm dark:border-amber-400/30 dark:bg-amber-400/10"
+            data-testid={`untracked-banner-${block.id}`}
+          >
+            <span className="min-w-0 flex-1">
+              {block.meterKind === "none"
+                ? "Nothing is tracked yet — add a task and its due dates appear here."
+                : "No service interval set — next service can't be tracked. Set one and the countdown starts."}
+            </span>
+            <Button size="sm" variant="outline" onClick={onAdd} data-testid="set-interval-button">
+              <Plus /> {block.meterKind === "none" ? "Add task" : "Set interval"}
+            </Button>
+          </div>
+        )}
+
+        {block.tasks.length > 0 && (
           <ul className="divide-y px-4" data-testid={`dash-tasks-${block.id}`}>
-            {block.tasks.map((task) => (
-              <li
-                key={task.id}
-                className="flex items-center gap-3 py-2.5"
-                data-testid={`dash-task-${task.id}`}
-              >
-                <span
-                  aria-hidden="true"
-                  className={`size-2 shrink-0 rounded-full ${
-                    task.due.status === "overdue"
-                      ? "bg-destructive"
-                      : task.due.status === "due-soon"
-                        ? "bg-soon"
-                        : "bg-ok"
-                  }`}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-sm font-medium">{task.name}</span>
-                    <DueChip status={task.due.status} />
+            {block.tasks.map((task) => {
+              const parts = dashboardParts(task, unit);
+              return (
+                <li
+                  key={task.id}
+                  className="flex items-center gap-3 py-2.5"
+                  data-testid={`dash-task-${task.id}`}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`size-2 shrink-0 rounded-full ${
+                      task.due.status === "overdue"
+                        ? "bg-destructive"
+                        : task.due.status === "due-soon"
+                          ? "bg-soon"
+                          : "bg-ok"
+                    }`}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium">{task.name}</span>
+                      <DueChip status={task.due.status} />
+                    </div>
+                    {(parts.due !== null || parts.every !== null) && (
+                      <p className="text-sm" data-testid={`dash-line-${task.id}`}>
+                        {parts.due !== null && <span>{parts.due}</span>}
+                        {parts.every !== null && (
+                          <span className="ml-2 text-xs text-muted-foreground">{parts.every}</span>
+                        )}
+                      </p>
+                    )}
                   </div>
-                  {dashboardLine(task, unit) && (
-                    <p
-                      className="text-xs text-muted-foreground"
-                      data-testid={`dash-line-${task.id}`}
-                    >
-                      {dashboardLine(task, unit)}
-                    </p>
-                  )}
-                </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  aria-label={`Edit ${task.name}`}
-                  onClick={() => onEdit(task)}
-                  data-testid={`dash-edit-task-${task.id}`}
-                  title="Change the interval or due point"
-                >
-                  <Pencil />
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => onDone(task.id)}
-                  data-testid={`done-${task.id}`}
-                  title="Record this as done"
-                >
-                  <CheckCircle2 /> Done
-                </Button>
-              </li>
-            ))}
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    aria-label={`Edit ${task.name}`}
+                    onClick={() => onEdit(task)}
+                    data-testid={`dash-edit-task-${task.id}`}
+                    title="Change the interval or due point"
+                  >
+                    <Pencil />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onDone(task.id)}
+                    data-testid={`done-${task.id}`}
+                    title="Record this as done"
+                  >
+                    <CheckCircle2 /> Done
+                  </Button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </CardContent>

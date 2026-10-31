@@ -97,13 +97,15 @@ test.describe("dashboard", () => {
     await page.getByTestId("reading-input").fill("600");
     await page.getByTestId("reading-submit").click();
 
-    // the dashboard row states all three numbers, in plain words
+    // the dashboard row states all three numbers, in plain words — and the
+    // block header answers “how far to next service?” outright
     await page.goto("/");
     const block = page.getByTestId(`dash-block-${await blockIdFor(page, "Trail Bike")}`);
     const row = block.locator("li").filter({ hasText: "Service" });
     await expect(row).toContainText("every 12 mo or 1,000 mi");
     await expect(row).toContainText("600 mi since last service");
     await expect(row).toContainText("due in 400 mi");
+    await expect(block.getByTestId("dash-headline")).toContainText("Next service in 400 mi");
 
     // change the maintenance interval right from the dashboard: 1,000 → 1,200
     await row.getByRole("button", { name: "Edit Service" }).click();
@@ -114,11 +116,54 @@ test.describe("dashboard", () => {
     await expect(row).toContainText("every 12 mo or 1,200 mi");
     await expect(row).toContainText("600 mi since last service");
     await expect(row).toContainText("due in 600 mi");
+    await expect(block.getByTestId("dash-headline")).toContainText("Next service in 600 mi");
 
     // self-clean: later specs assume an empty vault (dialog-scoped: other
     // equipment's closed delete-dialogs carry the same testid in the DOM)
     await page.goto("/equipment");
     await page.getByRole("button", { name: "Delete Trail Bike" }).click();
+    await page.getByRole("dialog").getByTestId("confirm-button").click();
+  });
+
+  test("meter equipment without an interval says so — and Set interval fixes it inline", async ({
+    page,
+  }) => {
+    await login(page);
+
+    // create WITHOUT an interval — the form's caution says what that means
+    await page.goto("/equipment");
+    await page.getByTestId("add-equipment-button").click();
+    await page.getByTestId("create-name").fill("Bare Project");
+    await page.getByTestId("create-meter").selectOption("miles");
+    await expect(page.getByTestId("create-interval-caution")).toBeVisible();
+    await page.getByTestId("create-submit").click();
+
+    // the dashboard refuses to be silently blank: an honest banner instead
+    await page.goto("/");
+    const block = page.getByTestId(`dash-block-${await blockIdFor(page, "Bare Project")}`);
+    const banner = block.locator('[data-testid^="untracked-banner"]');
+    await expect(banner).toContainText("No service interval set");
+
+    // fix it right there — the task form opens on the dashboard
+    await banner.getByTestId("set-interval-button").click();
+    await page.getByTestId("dash-add-preset").selectOption("custom");
+    await page.getByTestId("dash-add-task-name").fill("Service");
+    await page.getByTestId("dash-add-meter").fill("1000");
+    await page.getByTestId("dash-add-task-submit").click();
+    await expect(banner).toBeHidden();
+
+    // odometer in, via the freshness banner → the countdown is live
+    await block.getByRole("button", { name: "Update reading" }).click();
+    await page.getByTestId("banner-reading-input").fill("600");
+    await page.getByTestId("banner-reading-submit").click();
+    const row = block.locator("li").filter({ hasText: "Service" });
+    await expect(row).toContainText("every 1,000 mi");
+    await expect(row).toContainText("due in 1,000 mi"); // count starts at 600
+    await expect(block.getByTestId("dash-headline")).toContainText("Next service in 1,000 mi");
+
+    // self-clean
+    await page.goto("/equipment");
+    await page.getByRole("button", { name: "Delete Bare Project" }).click();
     await page.getByRole("dialog").getByTestId("confirm-button").click();
   });
 

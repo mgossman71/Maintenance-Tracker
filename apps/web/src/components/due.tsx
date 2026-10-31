@@ -25,13 +25,17 @@ export function DueChip({ status }: { status: TaskWithDue["due"]["status"] }) {
 const num = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 1 });
 
 /**
- * Dashboard language, in the owner's words: the maintenance INTERVAL, how
- * much has been USED since the last service (or the baseline when never
- * serviced), and what is LEFT —
- * "every 1,000 mi · 600 mi since last service · due in 400 mi".
- * Meter counts speak in miles/hours; days only when there is no meter.
+ * Dashboard language, in the owner's words: how much has been USED since
+ * the last service (or the baseline when never serviced) and what is LEFT
+ * — due: "600 mi since last service · due in 400 mi" — plus the interval,
+ * every: "every 1,000 mi". Split in two so the due statement can be shown
+ * LOUDER than the interval. Meter counts speak in miles/hours; days only
+ * when there is no meter.
  */
-export function dashboardLine(task: TaskWithDue, unit: "mi" | "h" | null): string {
+export function dashboardParts(
+  task: TaskWithDue,
+  unit: "mi" | "h" | null,
+): { every: string | null; due: string | null } {
   const every: string[] = [];
   if (task.monthsInterval !== null) every.push(`${task.monthsInterval} mo`);
   if (task.meterInterval !== null && unit !== null)
@@ -58,9 +62,63 @@ export function dashboardLine(task: TaskWithDue, unit: "mi" | "h" | null): strin
     parts.push(`due ${r.nextDueDate}`);
   }
 
-  return [every.length > 0 ? `every ${every.join(" or ")}` : null, ...parts]
-    .filter((p): p is string => p !== null)
-    .join(" · ");
+  return {
+    every: every.length > 0 ? `every ${every.join(" or ")}` : null,
+    due: parts.length > 0 ? parts.join(" · ") : null,
+  };
+}
+
+/**
+ * The block header's answer to "how far to next service?" — computed from
+ * the most urgent task (tasks arrive urgency-sorted from the engine route).
+ */
+export function nextServiceHeadline(
+  tasks: TaskWithDue[],
+  unit: "mi" | "h" | null,
+): { text: string; status: TaskWithDue["due"]["status"] } | null {
+  for (const t of tasks) {
+    const r = t.due;
+    if (unit !== null && r.remainingMeter !== null)
+      return {
+        text:
+          r.remainingMeter <= 0
+            ? `${num(Math.abs(r.remainingMeter))} ${unit} overdue`
+            : `Next service in ${num(r.remainingMeter)} ${unit}`,
+        status: r.status,
+      };
+    if (r.remainingDays !== null)
+      return {
+        text:
+          r.remainingDays <= 0
+            ? `Overdue since ${r.nextDueDate}`
+            : `Next service in ${r.remainingDays} d`,
+        status: r.status,
+      };
+  }
+  return null;
+}
+
+/** The headline chip: status-colored, the equipment block's one answer. */
+export function DueHeadlineChip({
+  tasks,
+  unit,
+}: {
+  tasks: TaskWithDue[];
+  unit: "mi" | "h" | null;
+}) {
+  const headline = nextServiceHeadline(tasks, unit);
+  if (headline === null) return null;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium",
+        CHIP[headline.status].className,
+      )}
+      data-testid="dash-headline"
+    >
+      {headline.text}
+    </span>
+  );
 }
 
 /** "due 2026-11-02 · in 138 d" / "due at 1,000mi · 400 to go" — the verdict, compactly. */

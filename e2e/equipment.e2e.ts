@@ -139,7 +139,9 @@ test.describe("equipment CRUD + meters", () => {
     // the field is the meter point the first service is due AT
     await page.getByTestId("create-meter").selectOption("miles");
     await expect(page.getByText("Next service due at mileage")).toBeVisible();
+    await expect(page.getByTestId("create-interval-caution")).toBeVisible();
     await page.getByTestId("create-interval").fill("5000");
+    await expect(page.getByTestId("create-interval-caution")).toBeHidden();
     await page.getByTestId("create-submit").click();
 
     await page.getByRole("link", { name: /Field Tractor/ }).click();

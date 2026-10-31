@@ -292,6 +292,22 @@ export function EquipmentForm({
                 Enter a positive number of {unit}.
               </p>
             )}
+            {!editing && serviceInterval === "" && (
+              <p
+                className="text-xs text-amber-700 dark:text-amber-400"
+                data-testid={`${testIdPrefix}-interval-caution`}
+              >
+                Without an interval nothing will ever be due — set one here or add tasks later.
+              </p>
+            )}
+            {editing && serviceInterval === "" && (
+              <p
+                className="text-xs text-muted-foreground"
+                data-testid={`${testIdPrefix}-interval-blank`}
+              >
+                Leave blank to keep the current interval.
+              </p>
+            )}
           </div>
         )}
         {meterKind === "none" && (
