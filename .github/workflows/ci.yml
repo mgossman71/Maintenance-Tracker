@@ -17,8 +17,19 @@ jobs:
       - run: bun run typecheck
       - run: bunx biome ci .
       - run: bun test
-      # Playwright e2e joins the suite from M3 (build-plan.md §10)
       - run: bun run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - run: bunx playwright install --with-deps chromium
+      - run: bun run e2e
 
   docker:
     runs-on: ubuntu-latest

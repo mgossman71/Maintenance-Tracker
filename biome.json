@@ -8,6 +8,23 @@
   "files": {
     "ignoreUnknown": true
   },
+  "overrides": [
+    {
+      "includes": ["**/routeTree.gen.ts"],
+      "linter": { "enabled": false },
+      "formatter": { "enabled": false },
+      "assist": { "enabled": false }
+    },
+    {
+      "includes": ["**/*.css"],
+      "css": {
+        "parser": {
+          "allowWrongLineComments": true,
+          "tailwindDirectives": true
+        }
+      }
+    }
+  ],
   "formatter": {
     "enabled": true,
     "indentStyle": "space",

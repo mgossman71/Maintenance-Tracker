@@ -8,7 +8,7 @@ import { fail } from "../http/errors.ts";
 /** §6.3: SameSite=Strict + Origin verification on every mutating request. */
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-export function csrfProtection(opts: { trustProxy: boolean }): MiddlewareHandler {
+export function csrfProtection(_opts: { trustProxy: boolean }): MiddlewareHandler {
   return async (c, next) => {
     if (!MUTATING.has(c.req.method)) return next();
 

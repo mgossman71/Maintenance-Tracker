@@ -147,7 +147,8 @@ export function equipmentRoutes(deps: AppDeps) {
     const updated = updateEquipment(db, eq.id, {
       reading: parsed.data.reading,
       readingUpdatedAt: parsed.data.date ?? deps.today(),
-    })!;
+    });
+    if (updated === null) return fail(c, "not_found", 404);
     return c.json(updated);
   });
 

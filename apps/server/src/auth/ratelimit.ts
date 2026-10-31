@@ -62,7 +62,7 @@ export class LoginGuard {
       return { allowed: false, retryAfterMs: s.lockedUntil - now, code: "locked" };
     }
     if (s.attempts.length >= this.opts.maxAttempts) {
-      const oldest = s.attempts[0]!;
+      const oldest = s.attempts[0] ?? now;
       return {
         allowed: false,
         retryAfterMs: this.opts.windowMs - (now - oldest),

@@ -91,7 +91,9 @@ export function insertEquipment(
     meterKind: data.meterKind ?? "none",
   };
   db.insert(equipment).values(row).run();
-  return getEquipment(db, row.id)!;
+  const created = getEquipment(db, row.id);
+  if (created === null) throw new Error("insert failed to persist equipment");
+  return created;
 }
 
 export function updateEquipment(
@@ -145,7 +147,9 @@ export function insertTask(
     currentExpiryDate: data.currentExpiryDate ?? null,
   };
   db.insert(task).values(row).run();
-  return getTask(db, row.id)!;
+  const created = getTask(db, row.id);
+  if (created === null) throw new Error("insert failed to persist task");
+  return created;
 }
 
 export function updateTask(
@@ -195,7 +199,9 @@ export function insertIntervention(
 ): InterventionRow {
   const row = { ...data, id: randomUUID() };
   db.insert(intervention).values(row).run();
-  return getIntervention(db, row.id)!;
+  const created = getIntervention(db, row.id);
+  if (created === null) throw new Error("insert failed to persist intervention");
+  return created;
 }
 
 export function updateIntervention(

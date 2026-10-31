@@ -82,9 +82,9 @@ export async function verifyPassword(password: string, phcString: string): Promi
     (parts[3] ?? "").split(",").map((kv) => kv.split("=") as [string, string]),
   );
   const params: Argon2Params = {
-    memorySize: Number(paramPairs["m"]),
-    iterations: Number(paramPairs["t"]),
-    parallelism: Number(paramPairs["p"]),
+    memorySize: Number(paramPairs.m),
+    iterations: Number(paramPairs.t),
+    parallelism: Number(paramPairs.p),
     hashLength: 32,
   };
   if (!Number.isFinite(params.memorySize) || !Number.isFinite(params.iterations)) return false;
