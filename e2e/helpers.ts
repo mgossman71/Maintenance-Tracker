@@ -7,7 +7,7 @@ export const PASSWORD = "correct-horse-battery";
  * single worker). Handles both states: the auth suite's vault (login) and
  * a pristine one (runs setup itself) — so a filtered run works too.
  */
-export async function login(page: Page): Promise<void> {
+export async function login(page: Page, password: string = PASSWORD): Promise<void> {
   await page.goto("/login");
   // the login page renders nothing until the auth-status query settles —
   // wait for whichever screen materializes, then drive it
@@ -17,7 +17,7 @@ export async function login(page: Page): Promise<void> {
     await page.getByTestId("setup-confirm").fill(PASSWORD);
     await page.getByTestId("setup-submit").click();
   } else {
-    await page.getByTestId("password-input").fill(PASSWORD);
+    await page.getByTestId("password-input").fill(password);
     await page.getByRole("button", { name: /sign in/i }).click();
   }
   await expect(page.getByTestId("dashboard-page")).toBeVisible();

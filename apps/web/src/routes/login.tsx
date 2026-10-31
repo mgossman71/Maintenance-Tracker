@@ -10,6 +10,9 @@ import { useTitle } from "@/lib/use-title";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
+  /** A one-shot notice from a redirect, e.g. after a password change. */
+  validateSearch: (search: Record<string, unknown>): { notice?: "password_changed" } =>
+    search.notice === "password_changed" ? { notice: "password_changed" } : {},
 });
 
 function errorMessage(err: unknown): string {
@@ -29,9 +32,10 @@ function errorMessage(err: unknown): string {
 
 function LoginPage() {
   useTitle("Sign in — Maintenance-Tracker");
+  const { notice } = Route.useSearch();
   const status = useQuery({ queryKey: ["auth-status"], queryFn: api.status });
   if (status.isPending) return null;
-  return status.data?.setupComplete === false ? <SetupScreen /> : <LoginScreen />;
+  return status.data?.setupComplete === false ? <SetupScreen /> : <LoginScreen notice={notice} />;
 }
 
 function Brand() {
@@ -43,7 +47,7 @@ function Brand() {
   );
 }
 
-function LoginScreen() {
+function LoginScreen({ notice }: { notice?: "password_changed" }) {
   const [password, setPassword] = useState("");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -59,6 +63,14 @@ function LoginScreen() {
   return (
     <AuthShell>
       <Brand />
+      {notice === "password_changed" && (
+        <p
+          className="mb-4 rounded-md border border-emerald-300/60 bg-emerald-50 p-2 text-center text-sm text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-300"
+          data-testid="login-notice"
+        >
+          Password changed — every device is signed out. Sign in with the new one.
+        </p>
+      )}
       <form
         className="space-y-4"
         onSubmit={(e) => {

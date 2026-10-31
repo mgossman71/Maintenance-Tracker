@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { MonitorSmartphone, Moon, Sun } from "lucide-react";
+import { SecurityPane } from "@/components/security-pane";
 import { TaskLibraryPane } from "@/components/task-library-pane";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { type ThemeMode, useTheme } from "@/lib/theme";
@@ -10,26 +11,16 @@ export const Route = createFileRoute("/_auth/settings")({
   component: SettingsPage,
 });
 
-/**
- * M3: the Appearance pane (theme, persisted) is real; Security and Task
- * library panes arrive in M8 and are shown as such.
- */
+/** Settings (§8): Appearance · Security · Task library · About. */
 function SettingsPage() {
   useTitle("Settings — Maintenance-Tracker");
   return (
     <section className="space-y-4" data-testid="settings-page">
       <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
       <AppearancePane />
-      <ComingSoonPane title="Security" body="Change master password — M8." />
+      <SecurityPane />
       <TaskLibraryPane />
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">About</CardTitle>
-          <CardDescription>
-            Maintenance-Tracker — milestone M3. Self-hosted, single-user, one master password.
-          </CardDescription>
-        </CardHeader>
-      </Card>
+      <AboutPane />
     </section>
   );
 }
@@ -74,13 +65,26 @@ function AppearancePane() {
   );
 }
 
-function ComingSoonPane({ title, body }: { title: string; body: string }) {
+function AboutPane() {
   return (
-    <Card className="opacity-70">
+    <Card data-testid="about-pane">
       <CardHeader>
-        <CardTitle className="text-base">{title}</CardTitle>
-        <CardDescription>{body}</CardDescription>
+        <CardTitle className="text-base">About</CardTitle>
+        <CardDescription>
+          Maintenance-Tracker v{__APP_VERSION__} — self-hosted maintenance tracking for the things
+          you own: cars, boats, machines, the house.
+        </CardDescription>
       </CardHeader>
+      <CardContent className="space-y-1 text-sm text-muted-foreground">
+        <p>
+          Single user, one master password, no accounts and no third-party calls. Everything — the
+          database and your uploaded files — lives on this server under the data directory you
+          configured.
+        </p>
+        <p>
+          The theme is a per-device preference; everything else is shared and stored server-side.
+        </p>
+      </CardContent>
     </Card>
   );
 }
