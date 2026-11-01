@@ -14,7 +14,7 @@ import { useEquipment, useFuel } from "../lib/hooks";
  */
 export function FuelPage() {
 	const equipment = useEquipment();
-	const mileBased = (equipment.data ?? []).filter((e) => e.meterKind === "miles");
+	const mileBased = (equipment.data ?? []).filter((e) => e.hasMiles);
 
 	return (
 		<div className="grid gap-4">
@@ -66,8 +66,8 @@ function VehicleFuelCard({ equipment }: { equipment: EquipmentDto }) {
 							{equipment.name}
 						</Link>
 						<p className="text-xs text-muted-foreground">
-							{equipment.currentMeter !== null
-								? formatMeterWithUnit(equipment.currentMeter, equipment.meterKind)
+							{equipment.currentMiles !== null
+								? formatMeterWithUnit(equipment.currentMiles, "miles")
 								: "No reading yet"}
 						</p>
 					</div>

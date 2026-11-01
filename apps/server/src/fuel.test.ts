@@ -7,8 +7,8 @@ const G = (gal: number) => Math.round(gal * 100);
 async function createHours(t: ReturnType<typeof useApp>): Promise<string> {
 	const r = await t.request("POST", "/api/equipment", {
 		name: "ATV",
-		meterKind: "hours",
-		currentMeter: T(145),
+		hasHours: true,
+		currentHours: T(145),
 	});
 	expect(r.status).toBe(201);
 	return r.data.id as string;
@@ -246,5 +246,5 @@ test("fuel: fill-ups never change the equipment reading", async () => {
 		gallons: "10",
 	});
 	const r = await t.request("GET", `/api/equipment/${truckId}`);
-	expect(r.data.currentMeter).toBe(T(12000));
+	expect(r.data.currentMiles).toBe(T(12000));
 });

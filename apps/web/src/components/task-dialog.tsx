@@ -25,9 +25,10 @@ const UNITS: Array<{ value: CalendarUnit; label: string }> = [
 ];
 
 /**
- * Create a task or edit an existing task's intervals. The preview recalculates
- * next-due values from the last service/baseline as you type — changes apply
- * prospectively; history is never touched.
+ * Create a task or edit an existing task's intervals. A task can be due on
+ * miles, hours, and/or calendar — whichever comes first. The preview
+ * recalculates next-due values from the last service/baseline as you type;
+ * changes apply prospectively, history is never touched.
  */
 export function TaskDialog({
 	open,
@@ -46,14 +47,23 @@ export function TaskDialog({
 	const task = existing?.task;
 	const status = existing?.status ?? null;
 
+	// When a task carries one meter, its dimension starts enabled; with both
+	// meters the mile clock is the conventional primary.
+	const defaultMiles = task
+		? task.milesEnabled
+		: equipment.hasMiles && (!equipment.hasHours || equipment.hasMiles);
+	const defaultHours = task ? task.hoursEnabled : equipment.hasHours && !equipment.hasMiles;
+
 	const [name, setName] = useState(task?.name ?? "");
 	const [description, setDescription] = useState(task?.description ?? "");
 	const [presetId, setPresetId] = useState<string | null>(task?.presetId ?? null);
-	const [meterEnabled, setMeterEnabled] = useState(
-		task?.meterEnabled ?? equipment.meterKind !== "none",
+	const [milesEnabled, setMilesEnabled] = useState(defaultMiles);
+	const [milesInterval, setMilesInterval] = useState(
+		task?.milesInterval != null ? formatMeter(task.milesInterval) : "",
 	);
-	const [meterInterval, setMeterInterval] = useState(
-		task?.meterInterval != null ? formatMeter(task.meterInterval) : "",
+	const [hoursEnabled, setHoursEnabled] = useState(defaultHours);
+	const [hoursInterval, setHoursInterval] = useState(
+		task?.hoursInterval != null ? formatMeter(task.hoursInterval) : "",
 	);
 	const [calendarEnabled, setCalendarEnabled] = useState(task?.calendarEnabled ?? false);
 	const [calendarValue, setCalendarValue] = useState(task?.calendarValue?.toString() ?? "");
@@ -61,39 +71,56 @@ export function TaskDialog({
 		(task?.calendarUnit as CalendarUnit | null) ?? "months",
 	);
 	const [baselineDate, setBaselineDate] = useState("");
-	const [baselineMeter, setBaselineMeter] = useState("");
-	const [error, setError] = useState<string | null>(null);
+	const [baselineMiles, setBaselineMiles] = useState("");
+	const [baselineHours, setBaselineHours] = useState("");
 
 	// Reset form state when the dialog target changes.
 	useEffect(() => {
 		if (!open) return;
 		setName(task?.name ?? "");
 		setDescription(task?.description ?? "");
-		setMeterEnabled(task?.meterEnabled ?? equipment.meterKind !== "none");
-		setMeterInterval(task?.meterInterval != null ? formatMeter(task.meterInterval) : "");
+		setMilesEnabled(
+			task ? task.milesEnabled : equipment.hasMiles && (!equipment.hasHours || equipment.hasMiles),
+		);
+		setMilesInterval(task?.milesInterval != null ? formatMeter(task.milesInterval) : "");
+		setHoursEnabled(task ? task.hoursEnabled : equipment.hasHours && !equipment.hasMiles);
+		setHoursInterval(task?.hoursInterval != null ? formatMeter(task.hoursInterval) : "");
 		setCalendarEnabled(task?.calendarEnabled ?? false);
 		setCalendarValue(task?.calendarValue?.toString() ?? "");
 		setCalendarUnit((task?.calendarUnit as CalendarUnit | null) ?? "months");
-	}, [open, task, equipment.meterKind]);
+	}, [open, task, equipment.hasMiles, equipment.hasHours]);
 
-	const hasMeter = equipment.meterKind !== "none";
-	const tenths = meterInterval.trim() === "" ? null : parseMeterToTenths(meterInterval);
+	const parseTenths = (text: string): number | null =>
+		text.trim() === "" ? null : parseMeterToTenths(text);
+	const milesTenths = parseTenths(milesInterval);
+	const hoursTenths = parseTenths(hoursInterval);
 	const calValueNum = calendarValue.trim() === "" ? null : Number.parseInt(calendarValue, 10);
 
-	const previewInput = (overridesInterval: number | null) =>
+	const previewInput = (overrides: {
+		miles: number | null;
+		hours: number | null;
+		calendar: number | null;
+	}) =>
 		evaluateTask({
-			meterKind: equipment.meterKind,
-			currentMeter: equipment.currentMeter,
+			hasMiles: equipment.hasMiles,
+			hasHours: equipment.hasHours,
+			currentMiles: equipment.currentMiles,
+			currentHours: equipment.currentHours,
 			task: {
-				meterEnabled,
-				meterInterval: overridesInterval,
+				milesEnabled,
+				milesInterval: overrides.miles,
+				hoursEnabled,
+				hoursInterval: overrides.hours,
 				calendarEnabled,
-				calendarValue: calValueNum,
+				calendarValue: overrides.calendar,
 				calendarUnit: calendarEnabled ? calendarUnit : null,
 				lastServiceDate: status?.lastServiceDate ?? (baselineDate || null),
-				lastServiceMeter:
-					status?.lastServiceMeter ??
-					(baselineMeter.trim() ? parseMeterToTenths(baselineMeter) : null),
+				lastServiceMiles:
+					status?.lastServiceMiles ??
+					(baselineMiles.trim() ? parseMeterToTenths(baselineMiles) : null),
+				lastServiceHours:
+					status?.lastServiceHours ??
+					(baselineHours.trim() ? parseMeterToTenths(baselineHours) : null),
 			},
 			today: new Date().toISOString().slice(0, 10),
 			warnMiles: settings.warnMiles,
@@ -101,17 +128,34 @@ export function TaskDialog({
 			warnDays: settings.warnDays,
 		});
 
-	const current = existing ? previewInput(task?.meterInterval ?? null) : null;
-	const next = previewInput(tenths);
+	const current = existing
+		? previewInput({
+				miles: task?.milesInterval ?? null,
+				hours: task?.hoursInterval ?? null,
+				calendar: task?.calendarEnabled ? task.calendarValue : null,
+			})
+		: null;
+	const next = previewInput({
+		miles: milesTenths,
+		hours: hoursTenths,
+		calendar: calendarEnabled ? calValueNum : null,
+	});
 
 	const applyPreset = (id: string) => {
 		const preset = (presets.data ?? []).find((p) => p.id === id);
 		setPresetId(id);
 		if (!preset) return;
 		if (!name) setName(preset.name);
-		if (preset.suggestMeterInterval != null && !meterInterval) {
-			setMeterEnabled(true);
-			setMeterInterval(formatMeter(preset.suggestMeterInterval));
+		if (preset.suggestMeterInterval != null) {
+			// Presets carry one suggested interval; it lands on the equipment's
+			// primary meter (miles when it has one).
+			if (equipment.hasMiles && !milesInterval) {
+				setMilesEnabled(true);
+				setMilesInterval(formatMeter(preset.suggestMeterInterval));
+			} else if (equipment.hasHours && !hoursInterval) {
+				setHoursEnabled(true);
+				setHoursInterval(formatMeter(preset.suggestMeterInterval));
+			}
 		}
 		if (preset.suggestCalendarValue != null && !calendarValue) {
 			setCalendarEnabled(true);
@@ -126,8 +170,10 @@ export function TaskDialog({
 				name: name.trim(),
 				description: description.trim() || null,
 				enabled: true,
-				meterEnabled,
-				meterInterval: tenths,
+				milesEnabled: equipment.hasMiles ? milesEnabled : false,
+				milesInterval: milesEnabled ? milesTenths : null,
+				hoursEnabled: equipment.hasHours ? hoursEnabled : false,
+				hoursInterval: hoursEnabled ? hoursTenths : null,
 				calendarEnabled,
 				calendarValue: calendarEnabled ? calValueNum : null,
 				calendarUnit: calendarEnabled ? calendarUnit : null,
@@ -139,18 +185,58 @@ export function TaskDialog({
 				...body,
 				presetId,
 				baselineDate: baselineDate || null,
-				baselineMeter: baselineMeter.trim() ? parseMeterToTenths(baselineMeter) : null,
+				baselineMiles: baselineMiles.trim() ? parseMeterToTenths(baselineMiles) : null,
+				baselineHours: baselineHours.trim() ? parseMeterToTenths(baselineHours) : null,
 			});
 		},
 		{ onDone: onClose },
 	);
 
+	const dimensionInvalid =
+		(milesEnabled && (milesTenths === null || milesTenths <= 0)) ||
+		(hoursEnabled && (hoursTenths === null || hoursTenths <= 0));
 	const formInvalid =
 		!name.trim() ||
-		(meterEnabled && (tenths === null || tenths <= 0)) ||
+		dimensionInvalid ||
 		(calendarEnabled &&
 			(calValueNum === null || !Number.isInteger(calValueNum) || calValueNum <= 0)) ||
-		(!meterEnabled && !calendarEnabled);
+		(!milesEnabled && !hoursEnabled && !calendarEnabled);
+
+	const meterSection = (opts: {
+		label: string;
+		enabled: boolean;
+		onEnabled: (v: boolean) => void;
+		value: string;
+		onValue: (v: string) => void;
+		placeholder: string;
+		tenths: number | null;
+	}) => (
+		<div className="rounded-lg border border-border p-3">
+			<div className="flex items-center justify-between">
+				<Label className="text-foreground">
+					Every {opts.value || "…"} {opts.label}
+				</Label>
+				<Switch
+					aria-label={`Enable ${opts.label} interval`}
+					checked={opts.enabled}
+					onCheckedChange={opts.onEnabled}
+				/>
+			</div>
+			{opts.enabled && (
+				<div className="mt-3">
+					<Input
+						inputMode="decimal"
+						value={opts.value}
+						placeholder={opts.placeholder}
+						onChange={(e) => opts.onValue(e.target.value)}
+					/>
+					{opts.value.trim() !== "" && opts.tenths === null && (
+						<p className="mt-1 text-xs text-destructive">Number with at most one decimal.</p>
+					)}
+				</div>
+			)}
+		</div>
+	);
 
 	return (
 		<Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -159,7 +245,6 @@ export function TaskDialog({
 					className="grid gap-4"
 					onSubmit={(e) => {
 						e.preventDefault();
-						setError(null);
 						save.mutate();
 					}}
 				>
@@ -199,39 +284,37 @@ export function TaskDialog({
 						</Field>
 					)}
 
-					{hasMeter && (
-						<div className="rounded-lg border border-border p-3">
-							<div className="flex items-center justify-between">
-								<Label className="text-foreground">
-									Every {groupThousands(meterInterval || "…")}{" "}
-									{equipment.meterKind === "hours" ? "hours" : "miles"}
-								</Label>
-								<Switch checked={meterEnabled} onCheckedChange={setMeterEnabled} />
-							</div>
-							{meterEnabled && (
-								<div className="mt-3">
-									<Input
-										inputMode="decimal"
-										value={meterInterval}
-										placeholder={equipment.meterKind === "hours" ? "50" : "5000"}
-										onChange={(e) => setMeterInterval(e.target.value)}
-									/>
-									{meterInterval.trim() !== "" && tenths === null && (
-										<p className="mt-1 text-xs text-destructive">
-											Number with at most one decimal.
-										</p>
-									)}
-								</div>
-							)}
-						</div>
-					)}
+					{equipment.hasMiles &&
+						meterSection({
+							label: "miles",
+							enabled: milesEnabled,
+							onEnabled: setMilesEnabled,
+							value: milesInterval,
+							onValue: setMilesInterval,
+							placeholder: "5000",
+							tenths: milesTenths,
+						})}
+					{equipment.hasHours &&
+						meterSection({
+							label: "hours",
+							enabled: hoursEnabled,
+							onEnabled: setHoursEnabled,
+							value: hoursInterval,
+							onValue: setHoursInterval,
+							placeholder: "50",
+							tenths: hoursTenths,
+						})}
 
 					<div className="rounded-lg border border-border p-3">
 						<div className="flex items-center justify-between">
 							<Label className="text-foreground">
 								Every {calendarValue || "…"} {calendarUnit}
 							</Label>
-							<Switch checked={calendarEnabled} onCheckedChange={setCalendarEnabled} />
+							<Switch
+								aria-label="Enable time interval"
+								checked={calendarEnabled}
+								onCheckedChange={setCalendarEnabled}
+							/>
 						</div>
 						{calendarEnabled && (
 							<div className="mt-3 grid grid-cols-2 gap-2">
@@ -266,19 +349,29 @@ export function TaskDialog({
 								Baseline — when was this last done?{" "}
 								<span className="text-muted-foreground">(optional)</span>
 							</p>
-							<div className="grid grid-cols-2 gap-2">
+							<div className="grid gap-2 sm:grid-cols-2">
 								<Input
 									type="date"
 									aria-label="Baseline date"
 									value={baselineDate}
 									onChange={(e) => setBaselineDate(e.target.value)}
 								/>
-								{hasMeter && (
+								{equipment.hasMiles && (
 									<Input
 										inputMode="decimal"
-										placeholder={`Last ${equipment.meterKind === "hours" ? "hours" : "miles"}`}
-										value={baselineMeter}
-										onChange={(e) => setBaselineMeter(e.target.value)}
+										placeholder="Last miles"
+										aria-label="Baseline miles"
+										value={baselineMiles}
+										onChange={(e) => setBaselineMiles(e.target.value)}
+									/>
+								)}
+								{equipment.hasHours && (
+									<Input
+										inputMode="decimal"
+										placeholder="Last hours"
+										aria-label="Baseline hours"
+										value={baselineHours}
+										onChange={(e) => setBaselineHours(e.target.value)}
 									/>
 								)}
 							</div>
@@ -292,11 +385,12 @@ export function TaskDialog({
 					<div className="rounded-lg bg-muted/60 p-3 text-sm">
 						<p className="mb-1 font-medium">Next due preview</p>
 						{existing && current && (
-							<p className="text-muted-foreground">
-								Now: {describePreview(current, equipment.meterKind)}
-							</p>
+							<p className="text-muted-foreground">Now: {describePreview(current)}</p>
 						)}
-						<p>After save: {describePreview(next, equipment.meterKind)}</p>
+						<p>After save: {describePreview(next)}</p>
+						<p className="mt-1 text-xs text-muted-foreground">
+							Whichever dimension comes first makes the task due.
+						</p>
 						{existing && (
 							<p className="mt-1 text-xs text-muted-foreground">
 								Changes apply going forward from the last recorded service — history is never
@@ -305,7 +399,7 @@ export function TaskDialog({
 						)}
 					</div>
 
-					{!meterEnabled && !calendarEnabled ? (
+					{!milesEnabled && !hoursEnabled && !calendarEnabled ? (
 						<Alert variant="error">Enable at least one schedule dimension.</Alert>
 					) : null}
 					{save.error ? <Alert variant="error">{(save.error as Error).message}</Alert> : null}
@@ -323,14 +417,19 @@ export function TaskDialog({
 	);
 }
 
-function describePreview(result: ReturnType<typeof evaluateTask>, kind: string): string {
+function describePreview(result: ReturnType<typeof evaluateTask>): string {
 	const parts: string[] = [];
-	if (result.meter.nextDueMeter !== null) {
+	if (result.miles.enabled && result.miles.nextDueMeter !== null) {
 		parts.push(
-			`${formatMeterWithUnit(result.meter.nextDueMeter, kind)}${result.meter.remainingMeter !== null ? ` (${formatSigned(result.meter.remainingMeter)})` : ""}`,
+			`${formatMeterWithUnit(result.miles.nextDueMeter, "miles")}${result.miles.remainingMeter !== null ? ` (${formatSigned(result.miles.remainingMeter)})` : ""}`,
 		);
 	}
-	if (result.calendar.nextDueDate !== null) {
+	if (result.hours.enabled && result.hours.nextDueMeter !== null) {
+		parts.push(
+			`${formatMeterWithUnit(result.hours.nextDueMeter, "hours")}${result.hours.remainingMeter !== null ? ` (${formatSigned(result.hours.remainingMeter)})` : ""}`,
+		);
+	}
+	if (result.calendar.enabled && result.calendar.nextDueDate !== null) {
 		parts.push(
 			`${result.calendar.nextDueDate}${result.calendar.remainingDays !== null ? ` (${result.calendar.remainingDays}d)` : ""}`,
 		);

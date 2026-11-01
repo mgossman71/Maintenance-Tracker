@@ -4,7 +4,7 @@ setupApp();
 
 const PRIVATE_ROUTES: Array<[string, string, unknown?]> = [
 	["GET", "/api/equipment"],
-	["POST", "/api/equipment", { name: "X", meterKind: "miles" }],
+	["POST", "/api/equipment", { name: "X", hasMiles: true }],
 	["GET", "/api/dashboard"],
 	["GET", "/api/settings"],
 	["PATCH", "/api/settings", { warnDays: 21 }],
@@ -95,7 +95,7 @@ test("CSRF: cross-origin state-changing requests rejected; same-origin allowed",
 	const evil = await t.request(
 		"POST",
 		"/api/equipment",
-		{ name: "Evil", meterKind: "none" },
+		{ name: "Evil", hasMiles: false },
 		{
 			origin: "https://evil.example",
 		},
@@ -104,14 +104,14 @@ test("CSRF: cross-origin state-changing requests rejected; same-origin allowed",
 	const cross = await t.request(
 		"POST",
 		"/api/equipment",
-		{ name: "Evil", meterKind: "none" },
+		{ name: "Evil", hasMiles: false },
 		{
 			origin: null,
 			secFetchSite: "cross-site",
 		},
 	);
 	expect(cross.status).toBe(403);
-	const ok = await t.request("POST", "/api/equipment", { name: "Fine", meterKind: "none" });
+	const ok = await t.request("POST", "/api/equipment", { name: "Fine", hasMiles: false });
 	expect(ok.status).toBe(201);
 });
 
@@ -155,7 +155,7 @@ test("session: logout revokes; password change revokes all sessions", async () =
 test("garbage and oversized inputs produce 422 with field errors, not 500", async () => {
 	const t = useApp();
 	await t.setup();
-	let r = await t.request("POST", "/api/equipment", { name: "", meterKind: "warp-drive" });
+	let r = await t.request("POST", "/api/equipment", { name: "", hasMiles: "warp-drive" });
 	expect(r.status).toBe(422);
 	expect(r.data.error.fields).toBeObject();
 	r = await t.request("POST", "/api/equipment", null);

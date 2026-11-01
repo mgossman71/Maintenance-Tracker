@@ -6,11 +6,11 @@ import { asc, desc, eq } from "drizzle-orm";
 import { badRequest, notFound, nowIso, uuid } from "../util";
 import { getEquipmentRow } from "./equipment";
 
-/** Fuel economy (MPG) is only meaningful for mile-based equipment. */
+/** Fuel economy (MPG) is only meaningful for equipment with a mile meter. */
 function requireMilesEquipment(db: AppDatabase, equipmentId: string) {
 	const row = getEquipmentRow(db, equipmentId);
-	if (row.meterKind !== "miles") {
-		throw badRequest("Fuel tracking is available for mile-based equipment only.");
+	if (!row.hasMiles) {
+		throw badRequest("Fuel tracking is available for equipment with a mile meter only.");
 	}
 	return row;
 }
@@ -95,12 +95,12 @@ function assertSaneOdometer(db: AppDatabase, equipmentId: string, odometer: numb
 	const equipment = getEquipmentRow(db, equipmentId);
 	// 100,000 miles, in tenths: nothing on a farm or in a garage plausibly
 	// drives that past its recorded reading in one fill-up.
-	if (equipment.currentMeter === null && odometer > 1_000_000_0) {
+	if (equipment.currentMiles === null && odometer > 1_000_000_0) {
 		throw badRequest("That odometer looks implausibly high; set the current reading first.");
 	}
 	if (
-		equipment.currentMeter !== null &&
-		odometer > equipment.currentMeter + 100_000_0 // 100k miles ahead
+		equipment.currentMiles !== null &&
+		odometer > equipment.currentMiles + 100_000_0 // 100k miles ahead
 	) {
 		throw badRequest(
 			"That odometer is far above the equipment's current reading. Update the reading first.",

@@ -10,9 +10,10 @@ so **a session cookie is the only credential** — treat it like a password.
 
 - **Meter values** (miles/hours) are **integer tenths of the unit** in JSON
   (responses) and **whole numbers of tenths**, string or number, on input:
-  `123456` tenths = 12,345.6 mi. `currentMeter`, `meter`, `meterInterval`,
-  `nextDueMeter`, `remainingMeter`, `baselineMeter` all follow this. This is
-  deliberate — integer math means 10.2 + 0.1 is exactly 10.3.
+  `123456` tenths = 12,345.6 mi. `currentMiles`/`currentHours`, `meterMiles`,
+  `milesInterval`, `nextDueMeter`, `remainingMeter`, `baselineMiles` etc. all
+  follow this. This is deliberate — integer math means 10.2 + 0.1 is exactly
+  10.3.
 - **Costs** are integer **cents** (`costCents`).
 - **Dates** are `YYYY-MM-DD`; timestamps are ISO-8601 UTC.
 - **PATCH semantics**: omitted keys keep their stored values; explicit
@@ -67,48 +68,50 @@ Uniform body, non-2xx status:
 
 ## Equipment
 
-| Method   | Path                 | Notes                                                                                                                              |
-| -------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`    | `/api/equipment`     | `?archived=true` lists archived instead of active. → `EquipmentDto[]`                                                              |
-| `POST`   | `/api/equipment`     | `{ name, category?, make?, model?, year?, description?, meterKind: "miles"\|"hours"\|"none", currentMeter? }` → `201 EquipmentDto` |
-| `GET`    | `/api/equipment/:id` | → `EquipmentDto`                                                                                                                   |
-| `PATCH`  | `/api/equipment/:id` | Partial update; `archived: true/false` archives/restores. Changing `meterKind` is rejected once readings or meter tasks exist.     |
-| `DELETE` | `/api/equipment/:id` | **Hard delete**: cascades tasks, events, documents, attachments, and removes upload files from disk.                               |
+| Method   | Path                 | Notes                                                                                                                                                                                                                                                                                  |
+| -------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/equipment`     | `?archived=true` lists archived instead of active. → `EquipmentDto[]`                                                                                                                                                                                                                  |
+| `POST`   | `/api/equipment`     | `{ name, category?, make?, model?, year?, description?, hasMiles?, hasHours?, currentMiles?, currentHours? }` → `201 EquipmentDto`. Neither flag = calendar-only.                                                                                                                      |
+| `GET`    | `/api/equipment/:id` | → `EquipmentDto`                                                                                                                                                                                                                                                                       |
+| `PATCH`  | `/api/equipment/:id` | Partial update; `archived: true/false` archives/restores. Adding a meter is always safe; **removing** one (`hasMiles: false`) is `409` while readings, events, tasks, or fuel logs use that unit. `currentMiles`/`currentHours` also seed a newly added meter and write a reading row. |
+| `DELETE` | `/api/equipment/:id` | **Hard delete**: cascades tasks, events, documents, attachments, and removes upload files from disk.                                                                                                                                                                                   |
 
 `EquipmentDto`: `id, name, category, make, model, year, description,
-meterKind, currentMeter, meterVerifiedAt, archivedAt, createdAt, updatedAt`.
+hasMiles, hasHours, currentMiles, currentHours, milesVerifiedAt,
+hoursVerifiedAt, archivedAt, createdAt, updatedAt`.
 
 ### Readings
 
-| Method | Path                          | Body                                                                                                                                   |
-| ------ | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`  | `/api/equipment/:id/readings` | — → `[{ id, value, mode, recordedAt }]` (newest first; `mode` = `increase\|confirm\|correction`)                                       |
-| `POST` | `/api/equipment/:id/reading`  | `{ mode: "increase", value }` · `{ mode: "confirm" }` · `{ mode: "correction", value }` → `{ currentMeter, meterVerifiedAt, warning }` |
+| Method | Path                          | Body                                                                                                                                                                 |
+| ------ | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/api/equipment/:id/readings` | — → `[{ id, kind, value, mode, recordedAt }]` (newest first; `kind` = `miles\|hours`, `mode` = `increase\|confirm\|correction`)                                      |
+| `POST` | `/api/equipment/:id/reading`  | `{ kind: "miles"\|"hours", mode: "increase", value }` · `{ kind, mode: "confirm" }` · `{ kind, mode: "correction", value }` → `{ kind, value, verifiedAt, warning }` |
 
-`increase` must be ≥ current; `correction` may decrease; every call writes
-an audit-trail row.
+`increase` must be ≥ current for that unit; `correction` may decrease;
+every call writes an audit-trail row. `400` if the equipment has no such
+meter.
 
 ### Tasks & events on an equipment item
 
-| Method   | Path                        | Notes                                                                                                                                                                                                                                                                             |
-| -------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`    | `/api/equipment/:id/tasks`  | → `[{ task: TaskDto, status: TaskStatusDto }]` — the computed due status lives here.                                                                                                                                                                                              |
-| `POST`   | `/api/equipment/:id/tasks`  | `{ name, description?, meterEnabled, meterInterval?, calendarEnabled, calendarValue?, calendarUnit?: "days"\|"weeks"\|"months"\|"years", enabled?, presetId?, baselineDate?, baselineMeter? }` → `201 TaskDto`. Baseline (date and/or meter) becomes a `source:"baseline"` event. |
-| `GET`    | `/api/equipment/:id/events` | `?taskId=` filter → `EventDto[]` newest-first, each with `attachments[]`.                                                                                                                                                                                                         |
-| `POST`   | `/api/equipment/:id/events` | `{ taskId?, label, performedOn, meter?, notes?, serviceProvider?, costCents?, partsUsed? }` → `201 { event, warning }`. Backdated entries are allowed; `warning` carries non-blocking chronology notes.                                                                           |
-| `PATCH`  | `/api/events/:id`           | Partial update → `{ event, warning }`; affected tasks recalculate.                                                                                                                                                                                                                |
-| `DELETE` | `/api/events/:id`           | Removes event + attachment files; recalculates.                                                                                                                                                                                                                                   |
+| Method   | Path                        | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| -------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET`    | `/api/equipment/:id/tasks`  | → `[{ task: TaskDto, status: TaskStatusDto }]` — the computed due status lives here.                                                                                                                                                                                                                                                                                                                                                 |
+| `POST`   | `/api/equipment/:id/tasks`  | `{ name, description?, milesEnabled?, milesInterval?, hoursEnabled?, hoursInterval?, calendarEnabled?, calendarValue?, calendarUnit?: "days"\|"weeks"\|"months"\|"years", enabled?, presetId?, baselineDate?, baselineMiles?, baselineHours? }` → `201 TaskDto`. At least one dimension; enabling a dimension whose meter the equipment lacks → `422`. Baseline (date and/or per-unit readings) becomes a `source:"baseline"` event. |
+| `GET`    | `/api/equipment/:id/events` | `?taskId=` filter → `EventDto[]` newest-first, each with `attachments[]`.                                                                                                                                                                                                                                                                                                                                                            |
+| `POST`   | `/api/equipment/:id/events` | `{ taskId?, label, performedOn, meterMiles?, meterHours?, notes?, serviceProvider?, costCents?, partsUsed? }` → `201 { event, warning }`. Readings are optional per clock — skipping one leaves that schedule unadvanced (a `warning` says so). Backdated entries allowed; `warning` also carries chronology notes.                                                                                                                  |
+| `PATCH`  | `/api/events/:id`           | Partial update → `{ event, warning }`; affected tasks recalculate.                                                                                                                                                                                                                                                                                                                                                                   |
+| `DELETE` | `/api/events/:id`           | Removes event + attachment files; recalculates.                                                                                                                                                                                                                                                                                                                                                                                      |
 
 `EventDto`: `id, equipmentId, taskId, label, source("service"|"baseline"),
-performedOn, meter, notes, serviceProvider, costCents, partsUsed, createdAt,
-updatedAt, attachments[]`.
+performedOn, meterMiles, meterHours, notes, serviceProvider, costCents,
+partsUsed, createdAt, updatedAt, attachments[]`.
 
 ### Fuel logs (mile-based equipment only)
 
 | Method   | Path                      | Notes                                                                                                                                                                                    |
 | -------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`    | `/api/equipment/:id/fuel` | → `FuelEconomyDto` — entries odometer-ascending with per-interval `mpgTenths`/`distanceTenths`, plus `summary`. `400` for hours/none equipment.                                          |
-| `POST`   | `/api/equipment/:id/fuel` | `{ loggedAt, odometer(tenths), gallons("12.75"), pricePerGallonCents? }` → `201 FuelLogDto`. Odometers far above the current reading are rejected; fill-ups never change `currentMeter`. |
+| `GET`    | `/api/equipment/:id/fuel` | → `FuelEconomyDto` — entries odometer-ascending with per-interval `mpgTenths`/`distanceTenths`, plus `summary`. `400` for equipment with no mile meter.                                  |
+| `POST`   | `/api/equipment/:id/fuel` | `{ loggedAt, odometer(tenths), gallons("12.75"), pricePerGallonCents? }` → `201 FuelLogDto`. Odometers far above the current reading are rejected; fill-ups never change `currentMiles`. |
 | `PATCH`  | `/api/fuel/:id`           | Partial update; `pricePerGallonCents: null` clears the price. Omitted keys stay unchanged.                                                                                               |
 | `DELETE` | `/api/fuel/:id`           | Removes the fill-up; economy recalculates.                                                                                                                                               |
 
@@ -134,18 +137,20 @@ fill-ups (the baseline's price included — it's money spent).
 | `DELETE` | `/api/tasks/:id` | Cascade-deletes that task's events (general no-task events untouched).                                                                                                                                                                                |
 
 `TaskStatusDto`: `status` (`OK|DUE_SOON|DUE|OVERDUE|NEEDS_BASELINE|DISABLED`),
-`disabled`, `driving` (`"meter"|"calendar"|null`), `explanation`,
-`lastServiceDate`, `lastServiceMeter`, `scheduleSummary`,
-`meter: { enabled, state, nextDueMeter, remainingMeter, unknownReason }`,
-`calendar: { enabled, state, nextDueDate, remainingDays, unknownReason }`.
+`disabled`, `driving` (`"miles"|"hours"|"calendar"|null` — the most urgent
+dimension; ties resolve miles > hours > calendar), `explanation`,
+`lastServiceDate`, `lastServiceMiles`, `lastServiceHours`, `scheduleSummary`,
+`miles`/`hours`: `{ enabled, state, nextDueMeter, remainingMeter,
+unknownReason }`, `calendar`: `{ enabled, state, nextDueDate, remainingDays,
+unknownReason }`.
 
 ## Dashboard & settings
 
-| Method  | Path             | Notes                                                                                                                                                                                                                                                                        |
-| ------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`   | `/api/dashboard` | → `{ groups: [{ status, items: [(TaskStatusDto & { taskName, equipmentName, meterKind, currentMeter })] }], staleReadingEquipment, today }`. Groups follow fixed urgency order (OVERDUE, DUE, DUE_SOON, NEEDS_BASELINE, OK); excludes archived equipment and disabled tasks. |
-| `GET`   | `/api/settings`  | → `{ warnMiles, warnHours, warnDays, staleReadingDays }`                                                                                                                                                                                                                     |
-| `PATCH` | `/api/settings`  | Any subset of the above → saved settings.                                                                                                                                                                                                                                    |
+| Method  | Path             | Notes                                                                                                                                                                                       |
+| ------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`   | `/api/dashboard` | → `{ groups: [{ status, items: [(TaskStatusDto & { taskName, equipmentName, hasMiles, hasHours, currentMiles, currentHours })] }], staleReadingEquipment: [{ id, name, staleUnits: ("miles" | "hours")[] }], today }`. Groups follow fixed urgency order (OVERDUE, DUE, DUE_SOON, NEEDS_BASELINE, OK); excludes archived equipment and disabled tasks. |
+| `GET`   | `/api/settings`  | → `{ warnMiles, warnHours, warnDays, staleReadingDays }`                                                                                                                                    |
+| `PATCH` | `/api/settings`  | Any subset of the above → saved settings.                                                                                                                                                   |
 
 ## Presets
 
@@ -192,9 +197,9 @@ BASE=https://mt.example.com
 curl -s -c jar -H "Origin: $BASE" -H "content-type: application/json" \
   -d '{"password":"..."}' "$BASE/api/login"
 
-# Add equipment with an odometer at 12,345.6 mi (currentMeter is tenths!)
+# Add equipment with an odometer at 12,345.6 mi (tenths!), plus an hour meter
 curl -s -b jar -H "Origin: $BASE" -H "content-type: application/json" \
-  -d '{"name":"F-150","meterKind":"miles","currentMeter":"123456"}' \
+  -d '{"name":"F-150","hasMiles":true,"currentMiles":"123456","hasHours":true,"currentHours":"3400"}' \
   "$BASE/api/equipment"
 
 # Upload a PDF manual

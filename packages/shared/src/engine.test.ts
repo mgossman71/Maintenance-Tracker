@@ -1,333 +1,381 @@
 import { describe, expect, test } from "bun:test";
-import { type EngineInput, type EngineTaskInput, evaluateTask } from "./engine";
+import {
+	DEFAULT_WARN_DAYS,
+	DEFAULT_WARN_HOURS,
+	DEFAULT_WARN_MILES,
+	type EngineInput,
+	evaluateTask,
+} from "./engine";
 
-const mi = (miles: number) => Math.round(miles * 10);
-const hr = (hours: number) => Math.round(hours * 10);
+const T = (units: number) => Math.round(units * 10);
 
-const DEFAULT_TASK: EngineTaskInput = {
-	meterEnabled: true,
-	meterInterval: null,
-	calendarEnabled: false,
-	calendarValue: null,
-	calendarUnit: null,
-	lastServiceDate: null,
-	lastServiceMeter: null,
-};
-
-interface Overrides {
-	meterKind?: EngineInput["meterKind"];
-	currentMeter?: number | null;
-	task?: Partial<EngineTaskInput>;
-	today?: string;
-	warnMiles?: number;
-	warnHours?: number;
-	warnDays?: number;
-}
-
-function input(overrides: Overrides = {}): EngineInput {
+/** Base input: both-meter equipment at 12,000 mi / 340 h, nothing enabled. */
+function base(overrides: Partial<EngineInput> = {}): EngineInput {
 	return {
-		meterKind: overrides.meterKind ?? "miles",
-		currentMeter: overrides.currentMeter ?? null,
-		task: { ...DEFAULT_TASK, ...overrides.task },
-		today: overrides.today ?? "2026-06-15",
-		warnMiles: overrides.warnMiles ?? 500,
-		warnHours: overrides.warnHours ?? 10,
-		warnDays: overrides.warnDays ?? 30,
+		hasMiles: true,
+		hasHours: true,
+		currentMiles: T(12000),
+		currentHours: T(340),
+		task: {
+			milesEnabled: false,
+			milesInterval: null,
+			hoursEnabled: false,
+			hoursInterval: null,
+			calendarEnabled: false,
+			calendarValue: null,
+			calendarUnit: null,
+			lastServiceDate: "2026-01-01",
+			lastServiceMiles: T(7000),
+			lastServiceHours: T(200),
+		},
+		today: "2026-06-01",
+		warnMiles: DEFAULT_WARN_MILES,
+		warnHours: DEFAULT_WARN_HOURS,
+		warnDays: DEFAULT_WARN_DAYS,
+		...overrides,
 	};
 }
 
-describe("mandatory examples from the build plan", () => {
-	// Last oil change 10,000 mi, interval 5,000 mi -> next at 15,000 mi.
-	test("next due is last service meter plus interval", () => {
+describe("miles dimension", () => {
+	test("OK when far from threshold", () => {
 		const r = evaluateTask(
-			input({
-				currentMeter: mi(10_000),
-				task: { meterInterval: mi(5_000), lastServiceMeter: mi(10_000) },
+			base({
+				currentMiles: T(11000),
+				task: {
+					...base().task,
+					milesEnabled: true,
+					milesInterval: T(5000),
+				},
 			}),
 		);
-		expect(r.meter.nextDueMeter).toBe(mi(15_000));
-		expect(r.status).toBe("OK"); // 5,000 miles remaining is outside the 500-mile warn
+		expect(r.miles.state).toBe("OK");
+		expect(r.miles.remainingMeter).toBe(T(1000));
+		expect(r.status).toBe("OK");
+		expect(r.driving).toBe("miles");
 	});
 
-	test("interval change to 3,000 immediately moves next due to 13,000", () => {
-		const base = { lastServiceMeter: mi(10_000) };
-		const before = evaluateTask(
-			input({ currentMeter: mi(12_000), task: { meterInterval: mi(5_000), ...base } }),
-		);
-		expect(before.meter.nextDueMeter).toBe(mi(15_000));
-		const after = evaluateTask(
-			input({ currentMeter: mi(12_000), task: { meterInterval: mi(3_000), ...base } }),
-		);
-		expect(after.meter.nextDueMeter).toBe(mi(13_000));
-	});
-
-	test("12,600 current -> DUE_SOON for 13,000 with 500-mile warn", () => {
+	test("DUE_SOON within warn threshold", () => {
 		const r = evaluateTask(
-			input({
-				currentMeter: mi(12_600),
-				task: { meterInterval: mi(3_000), lastServiceMeter: mi(10_000) },
+			base({
+				currentMiles: T(11800),
+				task: { ...base().task, milesEnabled: true, milesInterval: T(5000) },
 			}),
 		);
+		expect(r.miles.state).toBe("DUE_SOON");
 		expect(r.status).toBe("DUE_SOON");
 	});
 
-	test("13,000 current -> DUE at exactly zero", () => {
+	test("warn threshold is exclusive above", () => {
 		const r = evaluateTask(
-			input({
-				currentMeter: mi(13_000),
-				task: { meterInterval: mi(3_000), lastServiceMeter: mi(10_000) },
+			base({
+				currentMiles: T(11499),
+				task: { ...base().task, milesEnabled: true, milesInterval: T(5000) },
 			}),
 		);
+		// remaining = 501 mi > warn 500
+		expect(r.miles.state).toBe("OK");
+	});
+
+	test("exactly at threshold is DUE", () => {
+		const r = evaluateTask(
+			base({
+				currentMiles: T(12000),
+				task: { ...base().task, milesEnabled: true, milesInterval: T(5000) },
+			}),
+		);
+		expect(r.miles.state).toBe("DUE");
+		expect(r.miles.remainingMeter).toBe(0);
 		expect(r.status).toBe("DUE");
 	});
 
-	test("13,100 current -> OVERDUE", () => {
+	test("past threshold is OVERDUE with negative remaining", () => {
 		const r = evaluateTask(
-			input({
-				currentMeter: mi(13_100),
-				task: { meterInterval: mi(3_000), lastServiceMeter: mi(10_000) },
+			base({
+				currentMiles: T(12300),
+				task: { ...base().task, milesEnabled: true, milesInterval: T(5000) },
 			}),
 		);
+		expect(r.miles.state).toBe("OVERDUE");
+		expect(r.miles.remainingMeter).toBe(T(-300));
 		expect(r.status).toBe("OVERDUE");
-	});
-
-	test("service completed at 13,100 -> next at 16,100", () => {
-		const r = evaluateTask(
-			input({
-				currentMeter: mi(13_100),
-				task: { meterInterval: mi(3_000), lastServiceMeter: mi(13_100) },
-			}),
-		);
-		expect(r.meter.nextDueMeter).toBe(mi(16_100));
-		expect(r.status).toBe("OK");
-	});
-
-	test("repeat interval edits 5,000 -> 3,000 -> 7,500 recalculate from same history", () => {
-		const base = { lastServiceMeter: mi(10_000) };
-		const a = evaluateTask(
-			input({ currentMeter: mi(12_000), task: { meterInterval: mi(5_000), ...base } }),
-		);
-		const b = evaluateTask(
-			input({ currentMeter: mi(12_000), task: { meterInterval: mi(3_000), ...base } }),
-		);
-		const c = evaluateTask(
-			input({ currentMeter: mi(12_000), task: { meterInterval: mi(7_500), ...base } }),
-		);
-		expect([a.meter.nextDueMeter, b.meter.nextDueMeter, c.meter.nextDueMeter]).toEqual([
-			mi(15_000),
-			mi(13_000),
-			mi(17_500),
-		]);
-	});
-
-	test("Jan 15 2026 + 12 months -> Jan 15 2027", () => {
-		const r = evaluateTask(
-			input({
-				task: {
-					meterEnabled: false,
-					calendarEnabled: true,
-					calendarValue: 12,
-					calendarUnit: "months",
-					lastServiceDate: "2026-01-15",
-				},
-			}),
-		);
-		expect(r.calendar.nextDueDate).toBe("2027-01-15");
-	});
-
-	test("combined 5,000 mi / 12 months: overdue date wins over OK miles", () => {
-		const r = evaluateTask(
-			input({
-				currentMeter: mi(11_000),
-				task: {
-					meterEnabled: true,
-					meterInterval: mi(5_000),
-					lastServiceMeter: mi(10_000),
-					calendarEnabled: true,
-					calendarValue: 12,
-					calendarUnit: "months",
-					lastServiceDate: "2025-01-01",
-				},
-				today: "2026-06-15",
-			}),
-		);
-		expect(r.status).toBe("OVERDUE");
-		expect(r.meter.state).toBe("OK");
-		expect(r.calendar.state).toBe("OVERDUE");
 	});
 });
 
-describe("hours equipment", () => {
-	test("100-hour ATV schedule with 10-hour warn", () => {
-		const r = evaluateTask({
-			meterKind: "hours",
-			currentMeter: hr(145),
-			task: {
-				meterEnabled: true,
-				meterInterval: hr(100),
-				calendarEnabled: false,
-				calendarValue: null,
-				calendarUnit: null,
-				lastServiceDate: null,
-				lastServiceMeter: hr(50),
-			},
-			today: "2026-06-15",
-			warnMiles: 500,
-			warnHours: 10,
-			warnDays: 30,
-		});
-		expect(r.meter.nextDueMeter).toBe(hr(150));
+describe("hours dimension", () => {
+	test("uses the hours warn threshold, not the miles one", () => {
+		// 5 hours remaining: DUE_SOON under warnHours=10 even though it would be
+		// OK under the miles threshold of 500.
+		const r = evaluateTask(
+			base({
+				task: {
+					...base().task,
+					hoursEnabled: true,
+					hoursInterval: T(100),
+					lastServiceHours: T(245),
+				},
+			}),
+		);
+		expect(r.hours.state).toBe("DUE_SOON");
 		expect(r.status).toBe("DUE_SOON");
-	});
-});
-
-describe("status precedence and unknowns", () => {
-	test("no baseline at all -> NEEDS_BASELINE", () => {
-		const r = evaluateTask(input({ currentMeter: mi(12_000), task: { meterInterval: mi(5_000) } }));
-		expect(r.status).toBe("NEEDS_BASELINE");
+		expect(r.driving).toBe("hours");
 	});
 
-	test("unknown current reading -> dimension UNKNOWN but threshold displayed, NEEDS_BASELINE", () => {
+	test("hours OVERDUE with miles OK makes the whole task OVERDUE", () => {
 		const r = evaluateTask(
-			input({
-				currentMeter: null,
-				task: { meterInterval: mi(5_000), lastServiceMeter: mi(10_000) },
-			}),
-		);
-		expect(r.meter.nextDueMeter).toBe(mi(15_000));
-		expect(r.meter.state).toBe("UNKNOWN");
-		expect(r.status).toBe("NEEDS_BASELINE");
-	});
-
-	test("known dimension OK but other enabled dimension unknown -> NEEDS_BASELINE, not OK", () => {
-		const r = evaluateTask(
-			input({
-				currentMeter: mi(10_000),
+			base({
 				task: {
-					meterEnabled: true,
-					meterInterval: mi(5_000),
-					lastServiceMeter: mi(10_000),
-					calendarEnabled: true,
-					calendarValue: 6,
-					calendarUnit: "months",
-					lastServiceDate: null,
-				},
-			}),
-		);
-		expect(r.meter.state).toBe("OK");
-		expect(r.calendar.state).toBe("UNKNOWN");
-		expect(r.status).toBe("NEEDS_BASELINE");
-	});
-
-	test("one overdue + one unknown reports known urgency", () => {
-		const r = evaluateTask(
-			input({
-				currentMeter: mi(16_000),
-				task: {
-					meterEnabled: true,
-					meterInterval: mi(5_000),
-					lastServiceMeter: mi(10_000),
-					calendarEnabled: true,
-					calendarValue: 6,
-					calendarUnit: "months",
-					lastServiceDate: null,
-				},
-			}),
-		);
-		expect(r.status).toBe("OVERDUE");
-	});
-
-	test("calendar-only task never requires a meter", () => {
-		const r = evaluateTask(
-			input({
-				meterKind: "none",
-				currentMeter: null,
-				task: {
-					meterEnabled: false,
-					calendarEnabled: true,
-					calendarValue: 30,
-					calendarUnit: "days",
-					lastServiceDate: "2026-06-01",
-				},
-				today: "2026-06-15",
-			}),
-		);
-		expect(r.status).toBe("DUE_SOON"); // 16 days remaining is inside the 30-day warn
-		expect(r.calendar.remainingDays).toBe(16);
-	});
-});
-
-describe("warning boundaries", () => {
-	const metersAt = (current: number) =>
-		evaluateTask(
-			input({
-				currentMeter: mi(current),
-				task: { meterInterval: mi(5_000), lastServiceMeter: mi(10_000) },
-			}),
-		).status;
-
-	test("exactly 500 remaining is DUE_SOON, 500.1 remaining is OK", () => {
-		expect(metersAt(14_500)).toBe("DUE_SOON"); // boundary inclusive
-		expect(metersAt(14_499.9)).toBe("OK");
-	});
-
-	test("due-soon boundary at 10 hours (inclusive)", () => {
-		const at = (current: number) =>
-			evaluateTask({
-				...input(),
-				meterKind: "hours",
-				currentMeter: hr(current),
-				task: {
-					meterEnabled: true,
-					meterInterval: hr(100),
-					lastServiceMeter: hr(100),
+					milesEnabled: true,
+					milesInterval: T(5000),
+					hoursEnabled: true,
+					hoursInterval: T(30),
 					calendarEnabled: false,
 					calendarValue: null,
 					calendarUnit: null,
-					lastServiceDate: null,
+					lastServiceDate: "2026-01-01",
+					lastServiceMiles: T(8000),
+					lastServiceHours: T(300),
 				},
-			}).status;
-		expect(at(190)).toBe("DUE_SOON"); // exactly 10h remaining = warn boundary
-		expect(at(189.9)).toBe("OK"); // 10.1h remaining is outside warn
+			}),
+		);
+		expect(r.miles.state).toBe("OK"); // due at 13,000, current 12,000
+		expect(r.hours.state).toBe("OVERDUE"); // due at 330, current 340
+		expect(r.status).toBe("OVERDUE");
+		expect(r.driving).toBe("hours");
 	});
 });
 
-describe("decimal precision (tenths storage)", () => {
-	test("127.5 + 50 hours = exactly 177.5; DUE at exactly zero", () => {
-		const r = evaluateTask({
-			...input(),
-			meterKind: "hours",
-			currentMeter: hr(177.5),
-			task: {
-				meterEnabled: true,
-				meterInterval: hr(50),
-				lastServiceMeter: hr(127.5),
-				calendarEnabled: false,
-				calendarValue: null,
-				calendarUnit: null,
-				lastServiceDate: null,
-			},
-		});
-		expect(r.meter.nextDueMeter).toBe(hr(177.5));
-		expect(r.status).toBe("DUE");
+describe("whichever-comes-first precedence", () => {
+	const dualTask = {
+		milesEnabled: true,
+		milesInterval: T(5000), // due at 12,000 mi
+		hoursEnabled: true,
+		hoursInterval: T(50), // due at 250 h
+		calendarEnabled: true,
+		calendarValue: 6,
+		calendarUnit: "months" as const,
+		lastServiceDate: "2026-01-01",
+		lastServiceMiles: T(7000),
+		lastServiceHours: T(200),
+	};
+	// Comfortably inside every dualTask threshold at the same time.
+	const dualBase = (overrides: Partial<EngineInput> = {}) =>
+		base({ currentMiles: T(10000), currentHours: T(210), ...overrides });
+
+	test("worst dimension wins: miles OK, hours OK, calendar DUE_SOON", () => {
+		const r = evaluateTask(dualBase({ today: "2026-06-15", task: { ...dualTask } }));
+		// next due 2026-07-01 → 16 days left, within warn 30
+		expect(r.miles.state).toBe("OK");
+		expect(r.hours.state).toBe("OK");
+		expect(r.calendar.state).toBe("DUE_SOON");
+		expect(r.status).toBe("DUE_SOON");
+		expect(r.driving).toBe("calendar");
 	});
 
-	test("no floating-point drift: 0.1 + 0.2 problem cannot appear", () => {
-		const r = evaluateTask({
-			...input(),
-			meterKind: "hours",
-			currentMeter: hr(0.3),
-			task: {
-				meterEnabled: true,
-				meterInterval: hr(0.2),
-				lastServiceMeter: hr(0.1),
-				calendarEnabled: false,
-				calendarValue: null,
-				calendarUnit: null,
-				lastServiceDate: null,
-			},
+	test("worst dimension wins: hours overdue beats miles OK", () => {
+		const r = evaluateTask(
+			dualBase({
+				currentHours: T(260),
+				task: { ...dualTask, calendarEnabled: false, calendarValue: null, calendarUnit: null },
+			}),
+		);
+		expect(r.miles.state).toBe("OK");
+		expect(r.hours.state).toBe("OVERDUE");
+		expect(r.status).toBe("OVERDUE");
+		expect(r.driving).toBe("hours");
+	});
+
+	test("ties resolve to miles for stable rendering", () => {
+		const r = evaluateTask(
+			dualBase({
+				currentMiles: T(12100),
+				currentHours: T(255),
+				task: { ...dualTask, calendarEnabled: false, calendarValue: null, calendarUnit: null },
+			}),
+		);
+		expect(r.miles.state).toBe("OVERDUE");
+		expect(r.hours.state).toBe("OVERDUE");
+		expect(r.status).toBe("OVERDUE");
+		expect(r.driving).toBe("miles");
+	});
+
+	test("calendar overdue with both meters OK", () => {
+		const r = evaluateTask(dualBase({ today: "2027-01-01", task: { ...dualTask } }));
+		expect(r.miles.state).toBe("OK");
+		expect(r.hours.state).toBe("OK");
+		expect(r.calendar.state).toBe("OVERDUE");
+		expect(r.status).toBe("OVERDUE");
+		expect(r.driving).toBe("calendar");
+	});
+
+	test("all OK stays OK", () => {
+		const r = evaluateTask(dualBase({ today: "2026-02-01", task: { ...dualTask } }));
+		expect(r.miles.state).toBe("OK");
+		expect(r.hours.state).toBe("OK");
+		expect(r.calendar.state).toBe("OK");
+		expect(r.status).toBe("OK");
+		// driving picks the first non-unknown dimension at equal rank
+		expect(r.driving).toBe("miles");
+	});
+});
+
+describe("unknown dimensions", () => {
+	test("disabled dimension is unknown with reason disabled", () => {
+		const r = evaluateTask(base());
+		expect(r.miles).toEqual({
+			enabled: false,
+			state: "UNKNOWN",
+			nextDueMeter: null,
+			remainingMeter: null,
+			unknownReason: "disabled",
 		});
-		expect(r.meter.nextDueMeter).toBe(3); // exactly 0.3 in tenths
+	});
+
+	test("enabled without interval is unknown and makes task NEEDS_BASELINE", () => {
+		const r = evaluateTask(
+			base({ task: { ...base().task, milesEnabled: true, milesInterval: null } }),
+		);
+		expect(r.miles.unknownReason).toBe("no_interval");
+		expect(r.status).toBe("NEEDS_BASELINE");
+		expect(r.explanation).toContain("miles interval");
+	});
+
+	test("enabled without last service is unknown", () => {
+		const r = evaluateTask(
+			base({
+				task: {
+					...base().task,
+					milesEnabled: true,
+					milesInterval: T(5000),
+					lastServiceMiles: null,
+				},
+			}),
+		);
+		expect(r.miles.unknownReason).toBe("no_last_service");
+		expect(r.status).toBe("NEEDS_BASELINE");
+	});
+
+	test("no current meter keeps threshold but hides remaining", () => {
+		const r = evaluateTask(
+			base({
+				currentMiles: null,
+				task: { ...base().task, milesEnabled: true, milesInterval: T(5000) },
+			}),
+		);
+		expect(r.miles.unknownReason).toBe("no_current_meter");
+		expect(r.miles.nextDueMeter).toBe(T(12000));
+		expect(r.miles.remainingMeter).toBeNull();
+		expect(r.status).toBe("NEEDS_BASELINE");
+	});
+
+	test("dimension enabled but equipment lacks that meter", () => {
+		const r = evaluateTask(
+			base({
+				hasHours: false,
+				currentHours: null,
+				task: { ...base().task, hoursEnabled: true, hoursInterval: T(100) },
+			}),
+		);
+		expect(r.hours.unknownReason).toBe("no_meter_on_equipment");
+		expect(r.status).toBe("NEEDS_BASELINE");
+		expect(r.explanation).toContain("equipment has no hour meter");
+	});
+
+	test("one unknown dimension does not mask an overdue one", () => {
+		const r = evaluateTask(
+			base({
+				task: {
+					milesEnabled: true,
+					milesInterval: T(5000),
+					hoursEnabled: true,
+					hoursInterval: T(100),
+					calendarEnabled: false,
+					calendarValue: null,
+					calendarUnit: null,
+					lastServiceDate: "2026-01-01",
+					lastServiceMiles: T(7000), // overdue: 7000+5000 < 12000? no, due at 12000 exactly → DUE
+					lastServiceHours: null, // hours clock unknown
+				},
+			}),
+		);
+		expect(r.hours.unknownReason).toBe("no_last_service");
+		expect(r.miles.state).toBe("DUE");
 		expect(r.status).toBe("DUE");
+		expect(r.driving).toBe("miles");
+	});
+});
+
+describe("calendar-only tasks", () => {
+	test("seasonal task on time alone", () => {
+		const r = evaluateTask(
+			base({
+				today: "2026-05-01",
+				task: {
+					milesEnabled: false,
+					milesInterval: null,
+					hoursEnabled: false,
+					hoursInterval: null,
+					calendarEnabled: true,
+					calendarValue: 6,
+					calendarUnit: "months",
+					lastServiceDate: "2026-01-15",
+					lastServiceMiles: null,
+					lastServiceHours: null,
+				},
+			}),
+		);
+		expect(r.calendar.nextDueDate).toBe("2026-07-15");
+		expect(r.calendar.remainingDays).toBe(75);
+		expect(r.status).toBe("OK");
+		expect(r.driving).toBe("calendar");
+	});
+
+	test("month clamp keeps day-of-month valid", () => {
+		const r = evaluateTask(
+			base({
+				today: "2026-02-01",
+				task: {
+					milesEnabled: false,
+					milesInterval: null,
+					hoursEnabled: false,
+					hoursInterval: null,
+					calendarEnabled: true,
+					calendarValue: 1,
+					calendarUnit: "months",
+					lastServiceDate: "2026-01-31",
+					lastServiceMiles: null,
+					lastServiceHours: null,
+				},
+			}),
+		);
+		expect(r.calendar.nextDueDate).toBe("2026-02-28");
+	});
+
+	test("calendar without last service date is unknown", () => {
+		const r = evaluateTask(
+			base({
+				task: {
+					milesEnabled: false,
+					milesInterval: null,
+					hoursEnabled: false,
+					hoursInterval: null,
+					calendarEnabled: true,
+					calendarValue: 3,
+					calendarUnit: "months",
+					lastServiceDate: null,
+					lastServiceMiles: null,
+					lastServiceHours: null,
+				},
+			}),
+		);
+		expect(r.calendar.unknownReason).toBe("no_last_service");
+		expect(r.status).toBe("NEEDS_BASELINE");
+	});
+});
+
+describe("no dimensions at all", () => {
+	test("fully unshaped task is NEEDS_BASELINE with no driving dimension", () => {
+		const r = evaluateTask(base());
+		expect(r.status).toBe("NEEDS_BASELINE");
+		expect(r.driving).toBeNull();
 	});
 });

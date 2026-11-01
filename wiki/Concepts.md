@@ -2,63 +2,74 @@
 
 Five minutes here makes every screen obvious.
 
-## Equipment and meter kinds
+## Equipment and meters
 
-Each piece of **equipment** (truck, mower, boat, generator…) declares how its
-wear is measured — the **meter kind**, chosen at creation and locked once
-readings or meter-based tasks exist:
+Each piece of **equipment** (truck, mower, boat, generator…) declares which
+**meters** it carries — a mile meter, an hour meter, both, or neither. A diesel
+pickup with an engine-hour meter tracks 12,000 mi **and** 340 h side by side;
+a generator just counts hours; a trailer counts nothing (calendar-only).
 
-| Meter kind | Meaning                        |
-| ---------- | ------------------------------ |
-| **Miles**  | Vehicles with an odometer      |
-| **Hours**  | Machines with an hour meter    |
-| **None**   | Calendar-only items (no meter) |
+Each meter has its own **current reading** and **last-verified** timestamp.
+Readings are entered to one decimal place (127.5 h) but stored exactly as
+integer tenths — no floating-point drift, ever.
 
-Equipment carries a **current reading** (the odometer/hour-meter value) that
-you keep updated manually. Readings are entered to one decimal place
-(127.5 h) but stored exactly as integer tenths — no floating-point drift, ever.
+Adding a meter is always safe (its reading simply starts empty). Removing one
+is refused while any reading, service record, task interval, or fuel log still
+references that unit — history can't be orphaned.
 
 ## Tasks and schedules
 
 A **task** is a recurring maintenance item on one equipment item:
-_"Oil Change every 5,000 miles or 12 months, whichever comes first."_
+_"Change oil every 5,000 miles **or** 250 hours **or** 12 months, whichever
+comes first."_
 
-A task has up to two independent **schedule dimensions**:
+A task has up to three independent **schedule dimensions**, each enabled
+independently:
 
-- **Meter dimension** — interval in miles/hours (e.g. every 5,000).
+- **Miles dimension** — interval in miles (e.g. every 5,000).
+- **Hours dimension** — interval in hours (e.g. every 250).
 - **Calendar dimension** — interval in days/weeks/months/years (e.g. every 12
   months). Months and years clamp correctly (Jan 31 + 1 month → Feb 28/29).
 
-At least one dimension must be enabled. When both are on, the task is due when
-**either** dimension is due.
+At least one dimension must be enabled, and a dimension can only be enabled if
+the equipment actually carries that meter. The task is due when **whichever**
+dimension comes due **first** — that dimension drives the badge.
 
 **Presets** are editable suggestions (Oil Change, Tire Rotation, Air Filter…
-12 built-ins) that pre-fill the new-task dialog. Changing a preset never
-touches existing tasks, and built-ins are hidden rather than deleted.
+12 built-ins) that pre-fill the new-task dialog. Presets carry one suggested
+meter interval, which lands on the equipment's primary meter (miles when it
+has one). Changing a preset never touches existing tasks, and built-ins are
+hidden rather than deleted.
 
 ## Service events and baselines
 
 A **service event** records maintenance actually performed: date, optional
-meter reading, cost, provider, parts, notes, photos. Events can be recorded
-**in advance** (backfilled with past dates) — history is data you enter, not
-something the app has to observe.
+per-meter readings (miles at service, hours at service), cost, provider,
+parts, notes, photos. Events can be recorded **in advance** (backfilled with
+past dates) — history is data you enter, not something the app has to observe.
+
+Each clock resets from **its own reading**: a service that captures both
+numbers restarts both intervals; one that captures only miles leaves the hours
+clock where it was (the app warns you, but never blocks the record). Clearing
+a reading you didn't take is honest bookkeeping, not an error.
 
 When you create a task you may supply a **baseline** — "the last time this was
-done was 2026-01-10 at 10,000 miles." A baseline is stored as a special
-service event (`source = "baseline"`), so later real events supersede it
-naturally. A meter-based task **without** any baseline can't compute a
-meter-dimension due date, so it shows **Needs baseline** instead of a
-guess. Recording the first service resolves it.
+done was 2026-01-10 at 10,000 miles and 260 hours." A baseline is stored as a
+special service event (`source = "baseline"`), so later real events supersede
+it naturally. A task dimension **without** any baseline reading for it can't
+compute a due point, so it shows **Needs baseline** instead of a guess.
+Recording service with that reading resolves it.
 
 ## How due status is computed
 
 Each dimension is evaluated independently, then combined:
 
-1. **Find the last service** — the most recent event for this task (by date;
-   same-day ties prefer the one carrying a meter reading, then the newest
-   record). No baseline and no events → **Needs baseline**.
-2. **Meter dimension** — `next due = last meter + interval`. Remaining is
-   `next due − current reading`.
+1. **Find each dimension's last service** — the most recent event that
+   captured **that dimension's** reading (miles from mile readings, hours from
+   hour readings, calendar from any event's date; same-day ties prefer the
+   newest record). Nothing found for a dimension → **Needs baseline**.
+2. **Meter dimensions** — `next due = last service reading + interval`.
+   Remaining is `next due − current reading`.
 3. **Calendar dimension** — `next due = last date + interval`.
 4. **Status per dimension**:
 
@@ -68,8 +79,9 @@ Each dimension is evaluated independently, then combined:
    | **DUE_SOON / Due soon** | within the warn threshold (settings: miles, hours, days) |
    | **OK**                  | beyond the warn threshold                                |
 
-5. **Overall task status** — the worst dimension wins; disabled tasks drop out
-   of the dashboard; a missing baseline for a meter task shows
+5. **Overall task status** — the worst dimension wins (an overdue hour clock
+   makes the whole task overdue even when miles are fine); disabled tasks drop
+   out of the dashboard; a dimension with no baseline shows
    **Needs baseline**.
 
 Changing a warn threshold instantly re-colors the dashboard — thresholds are
@@ -86,7 +98,8 @@ live preview of the new next-due before you save.
 
 ## Readings: update, confirm, correct
 
-Because everything keys off the current reading, keeping it honest matters:
+Because everything keys off the current readings, keeping them honest matters.
+Each meter (miles, hours) is maintained independently:
 
 - **Update reading** — new value ≥ current (increases are normal, decreases
   are refused).
@@ -95,7 +108,8 @@ Because everything keys off the current reading, keeping it honest matters:
   value may go down and the change is kept in reading history.
 
 Equipment whose reading hasn't been updated or confirmed for _stale reading
-(days)_ (a setting) gets flagged on the dashboard.
+(days)_ (a setting) gets flagged on the dashboard — naming which meter (miles,
+hours, or both) went stale.
 
 ## Time and timezones
 

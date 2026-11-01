@@ -60,6 +60,16 @@ export interface TaskWithStatus {
 	status: TaskStatusDto;
 }
 
+/** Minimal equipment shape dialogs need to present both meter units. */
+export interface EquipmentLite {
+	id: string;
+	name: string;
+	hasMiles: boolean;
+	hasHours: boolean;
+	currentMiles: number | null;
+	currentHours: number | null;
+}
+
 export function useTasks(equipmentId: string) {
 	return useQuery({
 		queryKey: keys.tasks(equipmentId),

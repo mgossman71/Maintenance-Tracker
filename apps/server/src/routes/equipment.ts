@@ -25,13 +25,7 @@ import {
 import { createEvent, listEvents } from "../services/events";
 import { attachmentsForEvents, storedFilesForEquipment } from "../services/files";
 import { readSettings } from "../services/settings";
-import {
-	computeTaskStatus,
-	latestApplicableEvent,
-	toEquipmentDto,
-	toEventDto,
-	toTaskDto,
-} from "../services/status";
+import { computeTaskStatus, toEquipmentDto, toEventDto, toTaskDto } from "../services/status";
 import { createTask } from "../services/tasks";
 import type { AppVariables } from "../types";
 
@@ -75,11 +69,12 @@ export function registerEquipmentRoutes(
 		return c.json(listReadings(db, c.req.param("id")));
 	});
 
-	// Update / confirm / correct the current reading with an explicit mode.
+	// Update / confirm / correct the current reading of one meter, with an
+	// explicit mode.
 	app.post("/api/equipment/:id/reading", async (c) => {
 		const input = parse(readingUpdateInput, await c.req.json().catch(() => null));
 		const value = "value" in input ? input.value : null;
-		return c.json(applyReading(db, c.req.param("id"), input.mode, value));
+		return c.json(applyReading(db, c.req.param("id"), input.kind, input.mode, value));
 	});
 
 	// Tasks with computed due status.
@@ -96,10 +91,9 @@ export function registerEquipmentRoutes(
 			.all();
 		const result = tasks.map((task) => {
 			const events = listEvents(db, equipmentId, task.id);
-			const latest = latestApplicableEvent(events);
 			return {
 				task: toTaskDto(task),
-				status: computeTaskStatus(task, equipmentRow, latest, settings, today),
+				status: computeTaskStatus(task, equipmentRow, events, settings, today),
 			};
 		});
 		return c.json(result);

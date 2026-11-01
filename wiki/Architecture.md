@@ -36,10 +36,10 @@ apps/server        Hono API, auth, services, migrations-on-startup, CLI
 apps/web           React 19 SPA — Vite, Tailwind v4, Radix primitives,
                    TanStack Router/Query; a thin lib/api.ts client
 packages/shared    Zero-runtime-dep domain core:
-  types.ts          Meter kinds, calendar units, status enums
+  types.ts          Meter units, calendar units, status enums
   decimal.ts        Integer-tenths meter math (parse/format — no floats)
   dates.ts          Calendar arithmetic with month-end clamping, tz "today"
-  engine.ts         PURE due-status engine (no DB, no I/O — 19 unit tests;
+  engine.ts         PURE due-status engine — miles/hours/calendar (no DB, no I/O)
   contracts.ts      Zod inputs + response DTO types shared by server & client
 packages/db        Drizzle schema, generated migrations, builtin preset seed
 docker/            Multi-stage Dockerfile (non-root, pinned Bun)
@@ -53,16 +53,16 @@ which is why it has the densest test suite.
 
 ## Data model (SQLite)
 
-| Table                                       | Purpose / notes                                                                                   |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `equipment`                                 | `meter_kind` (miles/hours/none), `current_meter` (int tenths), `meter_verified_at`, `archived_at` |
-| `meter_readings`                            | Append-only trail of every reading change/correction                                              |
-| `maintenance_tasks`                         | Two-dimension schedule: `meter_enabled`/`meter_interval`, `calendar_*`; `enabled` toggle          |
-| `maintenance_events`                        | Service history **and** baselines (`source='baseline'`); cost in integer cents                    |
-| `task_presets`                              | 12 builtin seed suggestions + user presets; builtins soft-delete (`hidden`)                       |
-| `equipment_documents` / `event_attachments` | Metadata rows; bytes live in `uploads/<uuid>.<ext>`                                               |
-| `sessions`                                  | Hash of token (unique index), idle/absolute expiry                                                |
-| `app_settings`                              | Key/value: password hash, setup flag, thresholds, stale-reading days                              |
+| Table                                       | Purpose / notes                                                                                                       |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `equipment`                                 | `has_miles`/`has_hours` flags; `current_miles`/`current_hours` (int tenths) + per-unit `*_verified_at`; `archived_at` |
+| `meter_readings`                            | Append-only trail of every reading change/correction, tagged `kind` (miles/hours)                                     |
+| `maintenance_tasks`                         | Three-dimension schedule: `miles_*`, `hours_*`, `calendar_*` intervals; `enabled` toggle                              |
+| `maintenance_events`                        | Service history **and** baselines (`source='baseline'`); per-unit `meter_miles`/`meter_hours`; cost in cents          |
+| `task_presets`                              | 12 builtin seed suggestions + user presets; builtins soft-delete (`hidden`)                                           |
+| `equipment_documents` / `event_attachments` | Metadata rows; bytes live in `uploads/<uuid>.<ext>`                                                                   |
+| `sessions`                                  | Hash of token (unique index), idle/absolute expiry                                                                    |
+| `app_settings`                              | Key/value: password hash, setup flag, thresholds, stale-reading days                                                  |
 
 Conventions: ids are app-generated UUID strings; **all meter values stored as
 integer tenths**; timestamps are ISO strings set by the app (SQLite rejects

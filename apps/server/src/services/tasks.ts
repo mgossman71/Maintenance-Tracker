@@ -1,6 +1,7 @@
 import type { AppDatabase, MaintenanceTaskRow } from "@mt/db";
 import { maintenanceEvents, maintenanceTasks } from "@mt/db";
-import type { CalendarUnit } from "@mt/shared";
+import type { CalendarUnit, TaskDto } from "@mt/shared";
+import { taskShapeRefine } from "@mt/shared";
 import { eq } from "drizzle-orm";
 import { notFound, nowIso, uuid, validation } from "../util";
 import { getEquipmentRow } from "./equipment";
@@ -11,40 +12,33 @@ export interface TaskWriteInput {
 	description?: string | null;
 	presetId?: string | null;
 	enabled?: boolean;
-	meterEnabled?: boolean;
-	meterInterval?: number | null;
+	milesEnabled?: boolean;
+	milesInterval?: number | null;
+	hoursEnabled?: boolean;
+	hoursInterval?: number | null;
 	calendarEnabled?: boolean;
 	calendarValue?: number | null;
 	calendarUnit?: CalendarUnit | null;
 }
 
-function validateEffective(task: MaintenanceTaskRow): void {
+function validateEffective(
+	task: MaintenanceTaskRow,
+	meters: { hasMiles: boolean; hasHours: boolean },
+): void {
 	if (!task.enabled) return; // disabled tasks keep their shape untouched
-	if (!task.meterEnabled && !task.calendarEnabled) {
-		throw validation("At least one schedule dimension (distance/hours or time) must be enabled.");
-	}
-	if (task.meterEnabled && (task.meterInterval === null || task.meterInterval <= 0)) {
-		throw validation(
-			"A positive mileage/hours interval is required when that dimension is enabled.",
-		);
-	}
-	if (task.calendarEnabled && (task.calendarValue === null || !task.calendarUnit)) {
-		throw validation(
-			"A positive time interval and unit are required when that dimension is enabled.",
-		);
-	}
+	const message = taskShapeRefine(task, meters);
+	if (message) throw validation(message);
 }
 
 export function createTask(
 	db: AppDatabase,
 	equipmentId: string,
 	input: TaskWriteInput & {
-		meterEnabled: boolean;
-		calendarEnabled: boolean;
 		baselineDate?: string | null;
-		baselineMeter?: number | null;
+		baselineMiles?: number | null;
+		baselineHours?: number | null;
 	},
-) {
+): TaskDto {
 	const eqRow = getEquipmentRow(db, equipmentId);
 	const now = nowIso();
 	const row: MaintenanceTaskRow = {
@@ -54,18 +48,17 @@ export function createTask(
 		description: input.description ?? null,
 		presetId: input.presetId ?? null,
 		enabled: input.enabled ?? true,
-		meterEnabled: input.meterEnabled,
-		meterInterval: input.meterInterval ?? null,
-		calendarEnabled: input.calendarEnabled,
+		milesEnabled: input.milesEnabled ?? false,
+		milesInterval: input.milesInterval ?? null,
+		hoursEnabled: input.hoursEnabled ?? false,
+		hoursInterval: input.hoursInterval ?? null,
+		calendarEnabled: input.calendarEnabled ?? false,
 		calendarValue: input.calendarValue ?? null,
 		calendarUnit: input.calendarUnit ?? null,
 		createdAt: now,
 		updatedAt: now,
 	};
-	if (row.meterEnabled && eqRow.meterKind === "none") {
-		throw validation("This equipment tracks no meter; enable the time dimension instead.");
-	}
-	validateEffective(row);
+	validateEffective(row, { hasMiles: eqRow.hasMiles, hasHours: eqRow.hasHours });
 	// Baselines are optional at creation: a task without enough last-service
 	// data simply reports NEEDS_BASELINE until history or a baseline is added.
 
@@ -73,7 +66,9 @@ export function createTask(
 
 	// Optional user-entered baseline becomes a source='baseline' event row —
 	// the single baseline strategy (no baselines table).
-	if (input.baselineDate || input.baselineMeter != null) {
+	const hasBaseline =
+		input.baselineDate || input.baselineMiles != null || input.baselineHours != null;
+	if (hasBaseline) {
 		if (!input.baselineDate && row.calendarEnabled) {
 			throw validation(
 				"A baseline date is required when a baseline reading is given and the time dimension is enabled.",
@@ -88,7 +83,8 @@ export function createTask(
 				label: `${row.name} (baseline)`,
 				source: "baseline",
 				performedOn,
-				meter: input.baselineMeter ?? null,
+				meterMiles: input.baselineMiles ?? null,
+				meterHours: input.baselineHours ?? null,
 				notes: "Initial baseline entered when the task was created.",
 				createdAt: now,
 				updatedAt: now,
@@ -112,7 +108,7 @@ export function getTaskRow(db: AppDatabase, id: string): MaintenanceTaskRow {
  * PATCH semantics: merge with stored values, then re-validate the effective
  * row. Interval changes apply prospectively — history is never touched.
  */
-export function updateTask(db: AppDatabase, id: string, patch: TaskWriteInput) {
+export function updateTask(db: AppDatabase, id: string, patch: TaskWriteInput): TaskDto {
 	const existing = getTaskRow(db, id);
 	const eqRow = getEquipmentRow(db, existing.equipmentId);
 	const merged: MaintenanceTaskRow = {
@@ -121,21 +117,23 @@ export function updateTask(db: AppDatabase, id: string, patch: TaskWriteInput) {
 		...(patch.description !== undefined && { description: patch.description }),
 		...(patch.presetId !== undefined && { presetId: patch.presetId }),
 		...(patch.enabled !== undefined && { enabled: patch.enabled }),
-		...(patch.meterEnabled !== undefined && { meterEnabled: patch.meterEnabled }),
-		...(patch.meterInterval !== undefined && { meterInterval: patch.meterInterval }),
+		...(patch.milesEnabled !== undefined && { milesEnabled: patch.milesEnabled }),
+		...(patch.milesInterval !== undefined && { milesInterval: patch.milesInterval }),
+		...(patch.hoursEnabled !== undefined && { hoursEnabled: patch.hoursEnabled }),
+		...(patch.hoursInterval !== undefined && { hoursInterval: patch.hoursInterval }),
 		...(patch.calendarEnabled !== undefined && { calendarEnabled: patch.calendarEnabled }),
 		...(patch.calendarValue !== undefined && { calendarValue: patch.calendarValue }),
 		...(patch.calendarUnit !== undefined && { calendarUnit: patch.calendarUnit }),
 		updatedAt: nowIso(),
 	};
-	if (merged.meterEnabled && eqRow.meterKind === "none") {
-		throw validation("This equipment tracks no meter; disable the meter dimension.");
-	}
 	// Guard against wiping an enabled dimension's interval without disabling it.
-	if (merged.enabled && merged.meterEnabled && patch.meterInterval === null) {
-		throw validation("Set the meter dimension interval or disable that dimension.");
+	if (merged.enabled && merged.milesEnabled && patch.milesInterval === null) {
+		throw validation("Set the miles interval or disable the miles dimension.");
 	}
-	validateEffective(merged);
+	if (merged.enabled && merged.hoursEnabled && patch.hoursInterval === null) {
+		throw validation("Set the hours interval or disable the hours dimension.");
+	}
+	validateEffective(merged, { hasMiles: eqRow.hasMiles, hasHours: eqRow.hasHours });
 	db.update(maintenanceTasks).set(merged).where(eq(maintenanceTasks.id, id)).run();
 	return toTaskDto(merged);
 }

@@ -151,8 +151,8 @@ export const T = (units: number) => Math.round(units * 10);
 export async function createTruck(t: TestApp, miles = 12000): Promise<string> {
 	const r = await t.request("POST", "/api/equipment", {
 		name: "F-150",
-		meterKind: "miles",
-		currentMeter: T(miles),
+		hasMiles: true,
+		currentMiles: T(miles),
 	});
 	expect(r.status).toBe(201);
 	return r.data.id as string;
@@ -165,8 +165,8 @@ export async function createTask(
 ): Promise<string> {
 	const r = await t.request("POST", `/api/equipment/${equipmentId}/tasks`, {
 		name: "Oil Change",
-		meterEnabled: true,
-		meterInterval: T(5000),
+		milesEnabled: true,
+		milesInterval: T(5000),
 		calendarEnabled: false,
 		...overrides,
 	});

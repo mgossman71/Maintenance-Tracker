@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { isCalendarDate } from "./dates";
 import type { FuelSummary } from "./fuel";
-import { CALENDAR_UNITS, METER_KINDS } from "./types";
+import { CALENDAR_UNITS, METER_UNITS } from "./types";
 
 /**
  * API contracts shared by server validation and the web client.
@@ -71,8 +71,6 @@ export const passwordChangeInput = z.object({
 
 // --- Equipment ---------------------------------------------------------------
 
-export const equipmentMeterKind = z.enum(METER_KINDS);
-
 const equipmentBase = {
 	name: zTrimmed(120),
 	category: zOptionalText(60),
@@ -82,34 +80,63 @@ const equipmentBase = {
 	description: zOptionalText(),
 };
 
-export const equipmentCreateInput = z.object({
-	...equipmentBase,
-	meterKind: equipmentMeterKind,
-	currentMeter: zTenthsNonNegative(),
-});
+/** A machine may carry a mile meter, an hour meter, or both. */
+const metersShape = {
+	hasMiles: z.boolean().optional(),
+	hasHours: z.boolean().optional(),
+	currentMiles: zTenthsNonNegative(),
+	currentHours: zTenthsNonNegative(),
+};
 
-export const equipmentUpdateInput = z.object({
-	name: zTrimmed(120).optional(),
-	category: zOptionalText(60),
-	make: zOptionalText(60),
-	model: zOptionalText(60),
-	year: zYear,
-	description: zOptionalText(),
-	// meterKind may only change through the guarded conversion path (v1: only
-	// allowed while no readings or meter-based tasks exist).
-	meterKind: equipmentMeterKind.optional(),
-	archived: z.boolean().optional(),
-});
+function metersRefine(value: {
+	hasMiles?: boolean;
+	hasHours?: boolean;
+	currentMiles?: number | null;
+	currentHours?: number | null;
+}): string | null {
+	if (value.currentMiles != null && value.hasMiles === false)
+		return "A current miles reading requires a mile meter.";
+	if (value.currentHours != null && value.hasHours === false)
+		return "A current hours reading requires an hour meter.";
+	return null;
+}
+
+export const equipmentCreateInput = z
+	.object({ ...equipmentBase, ...metersShape })
+	.superRefine((value, ctx) => {
+		const message = metersRefine(value);
+		if (message) ctx.addIssue({ code: "custom", message, path: ["hasMiles"] });
+	});
+
+export const equipmentUpdateInput = z
+	.object({
+		name: zTrimmed(120).optional(),
+		category: zOptionalText(60),
+		make: zOptionalText(60),
+		model: zOptionalText(60),
+		year: zYear,
+		description: zOptionalText(),
+		...metersShape,
+		archived: z.boolean().optional(),
+	})
+	.superRefine((value, ctx) => {
+		const message = metersRefine(value);
+		if (message) ctx.addIssue({ code: "custom", message, path: ["hasMiles"] });
+	});
 
 export const readingUpdateInput = z.discriminatedUnion("mode", [
 	z.object({
+		/** Which meter this update applies to. */
+		kind: z.enum(METER_UNITS),
 		mode: z.literal("increase"),
 		value: zTenthsNonNegative().refine((v) => v !== null, "Reading value required"),
 	}),
 	z.object({
+		kind: z.enum(METER_UNITS),
 		mode: z.literal("confirm"),
 	}),
 	z.object({
+		kind: z.enum(METER_UNITS),
 		mode: z.literal("correction"),
 		value: zTenthsNonNegative().refine((v) => v !== null, "Reading value required"),
 	}),
@@ -121,28 +148,51 @@ const taskBase = {
 	name: zTrimmed(120),
 	description: zOptionalText(),
 	enabled: z.boolean().optional(),
-	meterEnabled: z.boolean(),
-	meterInterval: zTenthsPositive(),
-	calendarEnabled: z.boolean(),
+	milesEnabled: z.boolean().optional(),
+	milesInterval: zTenthsPositive(),
+	hoursEnabled: z.boolean().optional(),
+	hoursInterval: zTenthsPositive(),
+	calendarEnabled: z.boolean().optional(),
 	calendarValue: z.coerce.number().int().min(1).max(10000).optional().nullable(),
 	calendarUnit: z.enum(CALENDAR_UNITS).optional().nullable(),
 };
 
-function taskShapeRefine(shape: {
-	meterEnabled: boolean;
-	meterInterval?: number | null;
-	calendarEnabled: boolean;
+interface TaskShapeLike {
+	milesEnabled?: boolean;
+	milesInterval?: number | null;
+	hoursEnabled?: boolean;
+	hoursInterval?: number | null;
+	calendarEnabled?: boolean;
 	calendarValue?: number | null;
 	calendarUnit?: string | null;
-}) {
-	if (!shape.meterEnabled && !shape.calendarEnabled) {
-		return "At least one schedule dimension (distance/hours or time) must be enabled.";
+}
+
+/**
+ * Effective-shape validation (merged with stored values on PATCH).
+ * `meters` says whether the target equipment carries those meters;
+ * enabling a dimension whose meter is absent is a server-side 422.
+ */
+export function taskShapeRefine(
+	shape: TaskShapeLike,
+	meters?: { hasMiles: boolean; hasHours: boolean },
+): string | null {
+	if (!shape.milesEnabled && !shape.hoursEnabled && !shape.calendarEnabled) {
+		return "At least one schedule dimension (miles, hours, or time) must be enabled.";
 	}
-	if (shape.meterEnabled && (shape.meterInterval == null || shape.meterInterval <= 0)) {
-		return "A positive mileage/hours interval is required when that dimension is enabled.";
+	if (shape.milesEnabled && (shape.milesInterval == null || shape.milesInterval <= 0)) {
+		return "A positive miles interval is required when the miles dimension is enabled.";
+	}
+	if (shape.hoursEnabled && (shape.hoursInterval == null || shape.hoursInterval <= 0)) {
+		return "A positive hours interval is required when the hours dimension is enabled.";
 	}
 	if (shape.calendarEnabled && (shape.calendarValue == null || !shape.calendarUnit)) {
 		return "A positive time interval and unit are required when that dimension is enabled.";
+	}
+	if (meters) {
+		if (shape.milesEnabled && !meters.hasMiles)
+			return "This equipment has no mile meter; enable the miles meter first.";
+		if (shape.hoursEnabled && !meters.hasHours)
+			return "This equipment has no hour meter; enable the hour meter first.";
 	}
 	return null;
 }
@@ -151,16 +201,19 @@ export const taskCreateInput = z
 	.object({
 		...taskBase,
 		presetId: z.string().uuid().optional().nullable(),
-		// Optional initial baseline stored as a source='baseline' event.
+		// Optional initial baseline stored as source='baseline' events.
 		baselineDate: zCalendarDate.optional().nullable(),
-		baselineMeter: zTenthsNonNegative(),
+		baselineMiles: zTenthsNonNegative(),
+		baselineHours: zTenthsNonNegative(),
 	})
 	.superRefine((value, ctx) => {
 		const message = taskShapeRefine(value);
-		if (message) ctx.addIssue({ code: "custom", message, path: ["meterEnabled"] });
-		// A baseline reading paired with an enabled time dimension needs its
-		// date so the calendar threshold is not silently defaulted to today.
-		if (value.baselineMeter != null && value.calendarEnabled && value.baselineDate == null) {
+		if (message) ctx.addIssue({ code: "custom", message, path: ["milesEnabled"] });
+		if (
+			(value.baselineMiles != null || value.baselineHours != null) &&
+			value.calendarEnabled &&
+			value.baselineDate == null
+		) {
 			ctx.addIssue({
 				code: "custom",
 				message:
@@ -174,8 +227,10 @@ export const taskUpdateInput = z.object({
 	name: zTrimmed(120).optional(),
 	description: zOptionalText(),
 	enabled: z.boolean().optional(),
-	meterEnabled: z.boolean().optional(),
-	meterInterval: zTenthsPositive(),
+	milesEnabled: z.boolean().optional(),
+	milesInterval: zTenthsPositive(),
+	hoursEnabled: z.boolean().optional(),
+	hoursInterval: zTenthsPositive(),
 	calendarEnabled: z.boolean().optional(),
 	calendarValue: z.coerce.number().int().min(1).max(10000).optional().nullable(),
 	calendarUnit: z.enum(CALENDAR_UNITS).optional().nullable(),
@@ -189,7 +244,8 @@ export const eventCreateInput = z.object({
 	taskId: z.string().uuid().optional().nullable(),
 	label: zTrimmed(120),
 	performedOn: zCalendarDate,
-	meter: zTenthsNonNegative(),
+	meterMiles: zTenthsNonNegative(),
+	meterHours: zTenthsNonNegative(),
 	notes: zOptionalText(),
 	serviceProvider: zOptionalText(120),
 	costCents: zCostCents,
@@ -200,7 +256,8 @@ export const eventUpdateInput = z.object({
 	taskId: z.string().uuid().optional().nullable(),
 	label: zTrimmed(120).optional(),
 	performedOn: zCalendarDate.optional(),
-	meter: zTenthsNonNegative(),
+	meterMiles: zTenthsNonNegative(),
+	meterHours: zTenthsNonNegative(),
 	notes: zOptionalText(),
 	serviceProvider: zOptionalText(120),
 	costCents: zCostCents,
@@ -240,9 +297,12 @@ export interface EquipmentDto {
 	model: string | null;
 	year: number | null;
 	description: string | null;
-	meterKind: (typeof METER_KINDS)[number];
-	currentMeter: number | null;
-	meterVerifiedAt: string | null;
+	hasMiles: boolean;
+	hasHours: boolean;
+	currentMiles: number | null;
+	currentHours: number | null;
+	milesVerifiedAt: string | null;
+	hoursVerifiedAt: string | null;
 	archivedAt: string | null;
 	createdAt: string;
 	updatedAt: string;
@@ -255,8 +315,10 @@ export interface TaskDto {
 	description: string | null;
 	presetId: string | null;
 	enabled: boolean;
-	meterEnabled: boolean;
-	meterInterval: number | null;
+	milesEnabled: boolean;
+	milesInterval: number | null;
+	hoursEnabled: boolean;
+	hoursInterval: number | null;
 	calendarEnabled: boolean;
 	calendarValue: number | null;
 	calendarUnit: string | null;
@@ -271,7 +333,8 @@ export interface EventDto {
 	label: string;
 	source: "service" | "baseline";
 	performedOn: string;
-	meter: number | null;
+	meterMiles: number | null;
+	meterHours: number | null;
 	notes: string | null;
 	serviceProvider: string | null;
 	costCents: number | null;
@@ -325,7 +388,14 @@ export interface TaskStatusDto {
 	equipmentId: string;
 	status: string;
 	disabled: boolean;
-	meter: {
+	miles: {
+		enabled: boolean;
+		state: string;
+		nextDueMeter: number | null;
+		remainingMeter: number | null;
+		unknownReason: string | null;
+	};
+	hours: {
 		enabled: boolean;
 		state: string;
 		nextDueMeter: number | null;
@@ -342,7 +412,8 @@ export interface TaskStatusDto {
 	driving: string | null;
 	explanation: string;
 	lastServiceDate: string | null;
-	lastServiceMeter: number | null;
+	lastServiceMiles: number | null;
+	lastServiceHours: number | null;
 	scheduleSummary: string;
 }
 
@@ -352,15 +423,21 @@ export interface DashboardGroup {
 		TaskStatusDto & {
 			taskName: string;
 			equipmentName: string;
-			meterKind: string;
-			currentMeter: number | null;
+			hasMiles: boolean;
+			hasHours: boolean;
+			currentMiles: number | null;
+			currentHours: number | null;
 		}
 	>;
 }
 
 export interface DashboardDto {
 	groups: DashboardGroup[];
-	staleReadingEquipment: Array<{ id: string; name: string; meterVerifiedAt: string | null }>;
+	staleReadingEquipment: Array<{
+		id: string;
+		name: string;
+		staleUnits: (typeof METER_UNITS)[number][];
+	}>;
 	today: string;
 }
 
@@ -374,8 +451,9 @@ export interface ApiErrorBody {
 }
 
 export interface ReadingUpdateResult {
-	currentMeter: number;
-	meterVerifiedAt: string;
+	kind: "miles" | "hours";
+	value: number;
+	verifiedAt: string;
 	warning: string | null;
 }
 

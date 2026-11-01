@@ -30,8 +30,10 @@ export function buildDashboard(db: AppDatabase, config: ServerConfig): Dashboard
 		TaskStatusDto & {
 			taskName: string;
 			equipmentName: string;
-			meterKind: string;
-			currentMeter: number | null;
+			hasMiles: boolean;
+			hasHours: boolean;
+			currentMiles: number | null;
+			currentHours: number | null;
 		}
 	> = [];
 	for (const task of tasks) {
@@ -42,8 +44,10 @@ export function buildDashboard(db: AppDatabase, config: ServerConfig): Dashboard
 			...status,
 			taskName: task.name,
 			equipmentName: eqRow.name,
-			meterKind: eqRow.meterKind,
-			currentMeter: eqRow.currentMeter,
+			hasMiles: eqRow.hasMiles,
+			hasHours: eqRow.hasHours,
+			currentMiles: eqRow.currentMiles,
+			currentHours: eqRow.currentHours,
 		});
 	}
 
@@ -57,23 +61,37 @@ export function buildDashboard(db: AppDatabase, config: ServerConfig): Dashboard
 			),
 	})).filter((group) => group.items.length > 0);
 
-	// Stale-reading prompts: meter equipment whose verification is old, or that
-	// has meter-based tasks but no current reading at all.
+	// Stale-reading prompts per meter unit: a meter whose verification is old,
+	// or that has meter-based tasks but no current reading at all.
 	const staleCutoff = Date.now() - settings.staleReadingDays * 86_400_000;
-	const taskSets = new Map<string, { hasMeterTask: boolean }>();
+	const taskSets = new Map<string, { miles: boolean; hours: boolean }>();
 	for (const task of tasks) {
-		const entry = taskSets.get(task.equipmentId) ?? { hasMeterTask: false };
-		if (task.meterEnabled) entry.hasMeterTask = true;
+		const entry = taskSets.get(task.equipmentId) ?? { miles: false, hours: false };
+		if (task.milesEnabled) entry.miles = true;
+		if (task.hoursEnabled) entry.hours = true;
 		taskSets.set(task.equipmentId, entry);
 	}
 	const staleReadingEquipment = equipmentRows
-		.filter((row) => row.meterKind !== "none")
-		.filter((row) => {
-			const hasMeterTask = taskSets.get(row.id)?.hasMeterTask ?? false;
-			if (row.currentMeter === null) return hasMeterTask;
-			return row.meterVerifiedAt !== null && new Date(row.meterVerifiedAt).getTime() < staleCutoff;
+		.map((row) => {
+			const needs = taskSets.get(row.id) ?? { miles: false, hours: false };
+			const staleUnits: Array<"miles" | "hours"> = [];
+			for (const unit of ["miles", "hours"] as const) {
+				const has = unit === "miles" ? row.hasMiles : row.hasHours;
+				if (!has) continue;
+				const current = unit === "miles" ? row.currentMiles : row.currentHours;
+				const verifiedAt = unit === "miles" ? row.milesVerifiedAt : row.hoursVerifiedAt;
+				if (current === null) {
+					if (needs[unit]) staleUnits.push(unit);
+				} else if (verifiedAt !== null && new Date(verifiedAt).getTime() < staleCutoff) {
+					staleUnits.push(unit);
+				}
+			}
+			return staleUnits.length > 0 ? { id: row.id, name: row.name, staleUnits } : null;
 		})
-		.map((row) => ({ id: row.id, name: row.name, meterVerifiedAt: row.meterVerifiedAt }));
+		.filter(
+			(row): row is { id: string; name: string; staleUnits: Array<"miles" | "hours"> } =>
+				row !== null,
+		);
 
 	return { groups, staleReadingEquipment, today };
 }

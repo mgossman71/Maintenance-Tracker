@@ -12,7 +12,7 @@ import {
 	STATUS_BADGE,
 	STATUS_LABEL,
 } from "../lib/format";
-import { useDashboard, useEquipment } from "../lib/hooks";
+import { type EquipmentLite, useDashboard, useEquipment } from "../lib/hooks";
 
 type DashItem = DashboardGroup["items"][number];
 
@@ -31,52 +31,61 @@ function severity(status: string): number {
 	return SEVERITY[status] ?? SEVERITY_NONE;
 }
 
-interface VehicleCardData {
-	id: string;
-	name: string;
-	meterKind: string;
-	currentMeter: number | null;
+interface VehicleCardData extends EquipmentLite {
 	items: DashItem[];
 	worst: number;
 	hasOverdue: boolean;
+	staleUnits: string[];
 }
 
 export function DashboardPage() {
 	const dashboard = useDashboard();
 	const equipment = useEquipment();
 	const navigate = useNavigate();
-	const [recordFor, setRecordFor] = useState<RecordTarget | null>(null);
-	const [readingFor, setReadingFor] = useState<ReadingTarget | null>(null);
+	const [recordFor, setRecordFor] = useState<(EquipmentLite & { taskId: string }) | null>(null);
+	const [readingFor, setReadingFor] = useState<EquipmentLite | null>(null);
 
 	// One card per vehicle: dashboard tasks grouped by equipment, then every
 	// unarchived item that has no (active) tasks joins with an empty list.
 	const vehicles = useMemo<VehicleCardData[]>(() => {
 		const items = (dashboard.data?.groups ?? []).flatMap((g) => g.items);
 		const byId = new Map<string, VehicleCardData>();
-		const ensure = (id: string, name: string, meterKind: string, currentMeter: number | null) => {
+		const ensure = (id: string, name: string) => {
 			let v = byId.get(id);
 			if (!v) {
 				v = {
 					id,
 					name,
-					meterKind,
-					currentMeter,
+					hasMiles: false,
+					hasHours: false,
+					currentMiles: null,
+					currentHours: null,
 					items: [],
 					worst: SEVERITY_NONE,
 					hasOverdue: false,
+					staleUnits: [],
 				};
 				byId.set(id, v);
 			}
 			return v;
 		};
 		for (const item of items) {
-			const v = ensure(item.equipmentId, item.equipmentName, item.meterKind, item.currentMeter);
+			const v = ensure(item.equipmentId, item.equipmentName);
+			v.hasMiles ||= item.hasMiles;
+			v.hasHours ||= item.hasHours;
 			v.items.push(item);
 		}
 		for (const eq of equipment.data ?? []) {
-			const v = ensure(eq.id, eq.name, eq.meterKind, eq.currentMeter);
-			// Prefer the equipment list's reading (authoritative, fresh writes).
-			v.currentMeter = eq.currentMeter;
+			const v = ensure(eq.id, eq.name);
+			// Prefer the equipment list's readings (authoritative, fresh writes).
+			v.hasMiles = eq.hasMiles;
+			v.hasHours = eq.hasHours;
+			v.currentMiles = eq.currentMiles;
+			v.currentHours = eq.currentHours;
+		}
+		for (const stale of dashboard.data?.staleReadingEquipment ?? []) {
+			const v = byId.get(stale.id);
+			if (v) v.staleUnits = stale.staleUnits;
 		}
 		for (const v of byId.values()) {
 			v.items.sort((a, b) => severity(a.status) - severity(b.status));
@@ -111,7 +120,6 @@ export function DashboardPage() {
 		);
 	}
 
-	const staleIds = new Set((dashboard.data?.staleReadingEquipment ?? []).map((s) => s.id));
 	const allClear = vehicles.every((v) => v.worst >= severity("OK"));
 
 	return (
@@ -129,23 +137,8 @@ export function DashboardPage() {
 				<VehicleCard
 					key={vehicle.id}
 					vehicle={vehicle}
-					stale={staleIds.has(vehicle.id)}
-					onRecord={(item) =>
-						setRecordFor({
-							equipmentId: item.equipmentId,
-							taskId: item.taskId,
-							currentMeter: vehicle.currentMeter,
-							meterKind: vehicle.meterKind,
-						})
-					}
-					onUpdateReading={() =>
-						setReadingFor({
-							id: vehicle.id,
-							name: vehicle.name,
-							meterKind: vehicle.meterKind,
-							currentMeter: vehicle.currentMeter,
-						})
-					}
+					onRecord={(item) => setRecordFor({ ...lite(vehicle), taskId: item.taskId })}
+					onUpdateReading={() => setReadingFor(lite(vehicle))}
 				/>
 			))}
 
@@ -153,10 +146,8 @@ export function DashboardPage() {
 				<RecordServiceDialog
 					open
 					onClose={() => setRecordFor(null)}
-					equipmentId={recordFor.equipmentId}
+					equipment={recordFor}
 					defaultTaskId={recordFor.taskId}
-					currentMeter={recordFor.currentMeter}
-					meterKind={recordFor.meterKind}
 				/>
 			)}
 			{readingFor && (
@@ -166,28 +157,23 @@ export function DashboardPage() {
 	);
 }
 
-type RecordTarget = {
-	equipmentId: string;
-	taskId: string;
-	currentMeter: number | null;
-	meterKind: string;
-};
-
-type ReadingTarget = {
-	id: string;
-	name: string;
-	meterKind: string;
-	currentMeter: number | null;
-};
+function lite(v: VehicleCardData): EquipmentLite {
+	return {
+		id: v.id,
+		name: v.name,
+		hasMiles: v.hasMiles,
+		hasHours: v.hasHours,
+		currentMiles: v.currentMiles,
+		currentHours: v.currentHours,
+	};
+}
 
 function VehicleCard({
 	vehicle,
-	stale,
 	onRecord,
 	onUpdateReading,
 }: {
 	vehicle: VehicleCardData;
-	stale: boolean;
 	onRecord: (item: DashItem) => void;
 	onUpdateReading: () => void;
 }) {
@@ -195,6 +181,11 @@ function VehicleCard({
 		vehicle.worst === SEVERITY_NONE
 			? null
 			: (Object.keys(SEVERITY).find((k) => SEVERITY[k] === vehicle.worst) ?? null);
+	const hasMeter = vehicle.hasMiles || vehicle.hasHours;
+	const readings = [
+		vehicle.hasMiles ? formatMeterWithUnit(vehicle.currentMiles, "miles") : null,
+		vehicle.hasHours ? formatMeterWithUnit(vehicle.currentHours, "hours") : null,
+	].filter((s): s is string => s !== null && s !== "—");
 
 	return (
 		<Card data-vehicle={vehicle.id} className={vehicle.hasOverdue ? "border-destructive/60" : ""}>
@@ -214,10 +205,8 @@ function VehicleCard({
 					) : (
 						<Badge variant="neutral">Untracked</Badge>
 					)}
-					{vehicle.meterKind !== "none" && (
-						<span className="text-sm text-muted-foreground">
-							{formatMeterWithUnit(vehicle.currentMeter, vehicle.meterKind)}
-						</span>
+					{hasMeter && readings.length > 0 && (
+						<span className="text-sm text-muted-foreground">{readings.join(" · ")}</span>
 					)}
 				</div>
 
@@ -242,15 +231,17 @@ function VehicleCard({
 				)}
 
 				<div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-					{stale ? (
+					{vehicle.staleUnits.length > 0 ? (
 						<span className="flex items-center gap-1.5 text-xs text-warning">
 							<AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
-							Reading may be stale — confirm it for accurate due dates.
+							{vehicle.staleUnits.map((u) => (u === "miles" ? "mile" : "hour")).join(" and ")}{" "}
+							reading may be stale — confirm {vehicle.staleUnits.length > 1 ? "them" : "it"} for
+							accurate due dates.
 						</span>
 					) : (
 						<span />
 					)}
-					{vehicle.meterKind !== "none" && (
+					{hasMeter && (
 						<Button
 							size="sm"
 							variant="outline"
@@ -267,6 +258,33 @@ function VehicleCard({
 }
 
 function TaskRow({ item, onRecord }: { item: DashItem; onRecord: () => void }) {
+	const dimParts: string[] = [];
+	if (item.miles.enabled && item.miles.nextDueMeter !== null) {
+		dimParts.push(
+			`Due at ${formatMeterWithUnit(item.miles.nextDueMeter, "miles")}${
+				item.miles.remainingMeter !== null
+					? ` — ${formatRemaining(item.miles.remainingMeter, "miles")}`
+					: ""
+			}`,
+		);
+	}
+	if (item.hours.enabled && item.hours.nextDueMeter !== null) {
+		dimParts.push(
+			`Due at ${formatMeterWithUnit(item.hours.nextDueMeter, "hours")}${
+				item.hours.remainingMeter !== null
+					? ` — ${formatRemaining(item.hours.remainingMeter, "hours")}`
+					: ""
+			}`,
+		);
+	}
+	if (item.calendar.enabled && item.calendar.nextDueDate !== null) {
+		dimParts.push(
+			`Due ${formatDate(item.calendar.nextDueDate)}${
+				item.calendar.remainingDays !== null ? ` — ${formatDays(item.calendar.remainingDays)}` : ""
+			}`,
+		);
+	}
+
 	return (
 		<div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2">
 			<div className="min-w-0">
@@ -277,31 +295,9 @@ function TaskRow({ item, onRecord }: { item: DashItem; onRecord: () => void }) {
 					</Badge>
 				</div>
 				<p className="mt-0.5 text-xs text-muted-foreground">{item.scheduleSummary}</p>
-				<p className="mt-0.5 text-xs text-muted-foreground">
-					{item.meter.nextDueMeter !== null && (
-						<>
-							Due at{" "}
-							<span className="font-medium text-foreground">
-								{formatMeterWithUnit(item.meter.nextDueMeter, item.meterKind)}
-							</span>
-							{item.meter.remainingMeter !== null && (
-								<> — {formatSignedMeter(item.meter.remainingMeter, item.meterKind)} left</>
-							)}
-						</>
-					)}
-					{item.calendar.nextDueDate !== null && (
-						<>
-							{" · "}
-							Due{" "}
-							<span className="font-medium text-foreground">
-								{formatDate(item.calendar.nextDueDate)}
-							</span>
-							{item.calendar.remainingDays !== null && (
-								<> — {item.calendar.remainingDays} days left</>
-							)}
-						</>
-					)}
-				</p>
+				{dimParts.length > 0 && (
+					<p className="mt-0.5 text-xs text-muted-foreground">{dimParts.join(" · ")}</p>
+				)}
 				{item.explanation ? (
 					<p className="mt-0.5 text-xs text-warning">{item.explanation}</p>
 				) : null}
@@ -316,4 +312,13 @@ function TaskRow({ item, onRecord }: { item: DashItem; onRecord: () => void }) {
 			</Button>
 		</div>
 	);
+}
+
+function formatRemaining(tenths: number, unit: "miles" | "hours"): string {
+	const text = formatSignedMeter(tenths, unit);
+	return tenths < 0 ? text : `${text} left`;
+}
+
+function formatDays(days: number): string {
+	return days < 0 ? `${Math.abs(days)} days overdue` : `${days} days left`;
 }

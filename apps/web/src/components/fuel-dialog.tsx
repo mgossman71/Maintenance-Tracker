@@ -35,15 +35,15 @@ export function FuelDialog({
 }: {
 	open: boolean;
 	onClose: () => void;
-	equipment: { id: string; currentMeter: number | null };
+	equipment: { id: string; currentMiles: number | null };
 	entry: FuelEntry | null;
 }) {
 	const [loggedAt, setLoggedAt] = useState(entry?.loggedAt ?? todayLocalDate());
 	const [odometer, setOdometer] = useState(() =>
 		entry
 			? formatMeter(entry.odometer)
-			: equipment.currentMeter !== null
-				? formatMeter(equipment.currentMeter)
+			: equipment.currentMiles !== null
+				? formatMeter(equipment.currentMiles)
 				: "",
 	);
 	const [gallons, setGallons] = useState(entry ? formatGallons(entry.gallonsHundredths) : "");

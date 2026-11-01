@@ -1,7 +1,7 @@
 import { formatMeter, parseMeterToTenths, todayLocalDate } from "@mt/shared";
 import { useState } from "react";
 import { ApiClientError, api } from "../lib/api";
-import { useTasks, useWrite } from "../lib/hooks";
+import { type EquipmentLite, useTasks, useWrite } from "../lib/hooks";
 import { Button } from "./ui/button";
 import { Alert } from "./ui/card";
 import { Dialog, DialogContent, DialogFooter } from "./ui/dialog";
@@ -16,21 +16,52 @@ export function UpdateReadingDialog({
 }: {
 	open: boolean;
 	onClose: () => void;
-	equipment: { id: string; name: string; meterKind: string; currentMeter: number | null };
+	equipment: EquipmentLite;
 }) {
-	const unit = equipment.meterKind === "hours" ? "hours" : "miles";
-	const [value, setValue] = useState(() =>
-		equipment.currentMeter !== null ? formatMeter(equipment.currentMeter) : "",
+	const [miles, setMiles] = useState(() =>
+		equipment.currentMiles !== null ? formatMeter(equipment.currentMiles) : "",
 	);
-	const tenths = value.trim() === "" ? null : parseMeterToTenths(value);
-	const unchanged =
-		equipment.currentMeter !== null && tenths !== null && tenths === equipment.currentMeter;
+	const [hours, setHours] = useState(() =>
+		equipment.currentHours !== null ? formatMeter(equipment.currentHours) : "",
+	);
+	const parse = (v: string) => (v.trim() === "" ? null : parseMeterToTenths(v));
+	const milesTenths = parse(miles);
+	const hoursTenths = parse(hours);
+	const invalid =
+		(miles.trim() !== "" && milesTenths === null) || (hours.trim() !== "" && hoursTenths === null);
+	const unitDirty = (current: number | null, next: number | null, text: string) =>
+		next !== null && next !== current && text.trim() !== "";
+	const milesDirty = equipment.hasMiles && unitDirty(equipment.currentMiles, milesTenths, miles);
+	const hoursDirty = equipment.hasHours && unitDirty(equipment.currentHours, hoursTenths, hours);
+	// Unchanged prefilled value = explicit confirmation the reading is current.
+	const milesConfirm =
+		equipment.hasMiles && milesTenths !== null && milesTenths === equipment.currentMiles;
+	const hoursConfirm =
+		equipment.hasHours && hoursTenths !== null && hoursTenths === equipment.currentHours;
+	const nothingChanged = !milesDirty && !hoursDirty && !milesConfirm && !hoursConfirm;
+
 	const save = useWrite(
-		() =>
-			api.post(`/api/equipment/${equipment.id}/reading`, {
-				mode: unchanged ? "confirm" : "increase",
-				...(unchanged ? {} : { value: tenths }),
-			}),
+		async () => {
+			const posts: Array<Promise<unknown>> = [];
+			const post = (
+				kind: "miles" | "hours",
+				changed: boolean,
+				confirmed: boolean,
+				value: number | null,
+			) => {
+				if (!changed && !confirmed) return;
+				posts.push(
+					api.post(`/api/equipment/${equipment.id}/reading`, {
+						kind,
+						mode: changed ? "increase" : "confirm",
+						...(changed ? { value } : {}),
+					}),
+				);
+			};
+			post("miles", milesDirty, milesConfirm, milesTenths);
+			post("hours", hoursDirty, hoursConfirm, hoursTenths);
+			await Promise.all(posts);
+		},
 		{ onDone: () => onClose() },
 	);
 
@@ -44,21 +75,35 @@ export function UpdateReadingDialog({
 						save.mutate();
 					}}
 				>
-					<Field
-						label={`Current ${unit}`}
-						hint={
-							unchanged
-								? "Unchanged — saving confirms the reading is still accurate."
-								: "Decreases are rejected here; fix mistakes from the equipment Info tab."
-						}
-					>
-						<Input
-							inputMode="decimal"
-							autoFocus
-							value={value}
-							onChange={(e) => setValue(e.target.value)}
-						/>
-					</Field>
+					{equipment.hasMiles && (
+						<Field
+							label="Current miles"
+							hint="Decreases are rejected here; fix mistakes from the equipment Info tab."
+						>
+							<Input
+								inputMode="decimal"
+								autoFocus
+								value={miles}
+								onChange={(e) => setMiles(e.target.value)}
+							/>
+						</Field>
+					)}
+					{equipment.hasHours && (
+						<Field label="Current hours">
+							<Input
+								inputMode="decimal"
+								autoFocus={!equipment.hasMiles}
+								value={hours}
+								onChange={(e) => setHours(e.target.value)}
+							/>
+						</Field>
+					)}
+					{nothingChanged && (
+						<p className="text-xs text-muted-foreground">
+							Leave a value unchanged to confirm it, or enter the new reading.
+						</p>
+					)}
+					{invalid ? <Alert variant="error">Enter a valid number.</Alert> : null}
 					{save.error ? (
 						<Alert variant="error">
 							{save.error instanceof ApiClientError ? save.error.message : "Could not save."}
@@ -68,8 +113,8 @@ export function UpdateReadingDialog({
 						<Button type="button" variant="ghost" onClick={onClose}>
 							Cancel
 						</Button>
-						<Button type="submit" disabled={save.isPending || tenths === null}>
-							{save.isPending ? "Saving…" : unchanged ? "Confirm reading" : "Save"}
+						<Button type="submit" disabled={save.isPending || invalid || nothingChanged}>
+							{save.isPending ? "Saving…" : "Save"}
 						</Button>
 					</DialogFooter>
 				</form>
@@ -78,23 +123,19 @@ export function UpdateReadingDialog({
 	);
 }
 
-/** Record (or backfill) a service event; meter required for meter-based tasks. */
+/** Record (or backfill) a service event; each clock's reading is optional. */
 export function RecordServiceDialog({
 	open,
 	onClose,
-	equipmentId,
+	equipment,
 	defaultTaskId,
-	currentMeter,
-	meterKind,
 }: {
 	open: boolean;
 	onClose: () => void;
-	equipmentId: string;
+	equipment: EquipmentLite;
 	defaultTaskId?: string | null;
-	currentMeter: number | null;
-	meterKind: string;
 }) {
-	const tasksQuery = useTasks(equipmentId);
+	const tasksQuery = useTasks(equipment.id);
 	const all = tasksQuery.data ?? [];
 	const active = all.filter((t) => t.task.enabled);
 	const [taskId, setTaskId] = useState<string | null>(defaultTaskId ?? null);
@@ -102,10 +143,14 @@ export function RecordServiceDialog({
 		active.find((t) => t.task.id === taskId) ??
 		(defaultTaskId ? active.find((t) => t.task.id === defaultTaskId) : undefined) ??
 		active[0];
-	const meterRequired = selected?.task.meterEnabled ?? false;
 	const [date, setDate] = useState(() => todayLocalDate());
-	const [meter, setMeter] = useState(() =>
-		currentMeter !== null ? formatMeter(currentMeter) : "",
+	// Prefill with the current readings — like copying numbers off a service
+	// ticket. Clearing a field leaves that clock untouched (server warns).
+	const [milesAtService, setMilesAtService] = useState(() =>
+		equipment.currentMiles !== null ? formatMeter(equipment.currentMiles) : "",
+	);
+	const [hoursAtService, setHoursAtService] = useState(() =>
+		equipment.currentHours !== null ? formatMeter(equipment.currentHours) : "",
 	);
 	const [notes, setNotes] = useState("");
 	const [cost, setCost] = useState("");
@@ -118,12 +163,13 @@ export function RecordServiceDialog({
 	const save = useWrite(
 		async () => {
 			const result = await api.post<{ event: { id: string }; warning: string | null }>(
-				`/api/equipment/${equipmentId}/events`,
+				`/api/equipment/${equipment.id}/events`,
 				{
 					taskId: selected?.task.id ?? null,
 					label: selected?.task.name ?? "Maintenance",
 					performedOn: date,
-					meter: meter.trim() === "" ? null : parseMeterToTenths(meter),
+					meterMiles: milesAtService.trim() === "" ? null : parseMeterToTenths(milesAtService),
+					meterHours: hoursAtService.trim() === "" ? null : parseMeterToTenths(hoursAtService),
 					notes: notes.trim() || null,
 					serviceProvider: provider.trim() || null,
 					costCents: cost.trim() === "" ? null : Math.round(Number.parseFloat(cost) * 100),
@@ -144,7 +190,10 @@ export function RecordServiceDialog({
 		},
 	);
 
-	const meterInvalid = meter.trim() !== "" && parseMeterToTenths(meter) === null;
+	const parse = (v: string) => (v.trim() === "" ? null : parseMeterToTenths(v));
+	const meterInvalid =
+		(milesAtService.trim() !== "" && parse(milesAtService) === null) ||
+		(hoursAtService.trim() !== "" && parse(hoursAtService) === null);
 
 	return (
 		<Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -154,10 +203,6 @@ export function RecordServiceDialog({
 					onSubmit={(e) => {
 						e.preventDefault();
 						setError(null);
-						if (meterRequired && meter.trim() === "") {
-							setError("A meter reading is required for this task's schedule.");
-							return;
-						}
 						save.mutate();
 					}}
 				>
@@ -185,18 +230,47 @@ export function RecordServiceDialog({
 						<Field label="Date performed">
 							<Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
 						</Field>
-						<Field
-							label={meterRequired ? "Meter reading (required)" : "Meter reading (optional)"}
-							error={meterInvalid ? "Number with at most one decimal (e.g., 127.5)" : undefined}
-						>
-							<Input
-								inputMode="decimal"
-								value={meter}
-								placeholder={selected?.task.meterEnabled ? "12,345" : "—"}
-								onChange={(e) => setMeter(e.target.value)}
-							/>
-						</Field>
+						{equipment.hasMiles && (
+							<Field
+								label="Miles at service"
+								error={
+									milesAtService.trim() !== "" && parse(milesAtService) === null
+										? "Number with at most one decimal (e.g., 12345.5)"
+										: undefined
+								}
+							>
+								<Input
+									inputMode="decimal"
+									value={milesAtService}
+									placeholder="—"
+									onChange={(e) => setMilesAtService(e.target.value)}
+								/>
+							</Field>
+						)}
+						{equipment.hasHours && (
+							<Field
+								label="Hours at service"
+								error={
+									hoursAtService.trim() !== "" && parse(hoursAtService) === null
+										? "Number with at most one decimal (e.g., 127.5)"
+										: undefined
+								}
+							>
+								<Input
+									inputMode="decimal"
+									value={hoursAtService}
+									placeholder="—"
+									onChange={(e) => setHoursAtService(e.target.value)}
+								/>
+							</Field>
+						)}
 					</div>
+					{(selected?.task.milesEnabled || selected?.task.hoursEnabled) && (
+						<p className="-mt-2 text-xs text-muted-foreground">
+							Clear a reading to leave that schedule where it is — only the clocks you fill in
+							restart.
+						</p>
+					)}
 					<Field label="Notes">
 						<Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
 					</Field>
@@ -234,12 +308,7 @@ export function RecordServiceDialog({
 							{save.error instanceof ApiClientError ? save.error.message : "Save failed"}
 						</Alert>
 					) : null}
-					{warning ? (
-						<Alert variant="warning">
-							Saved with a note: {warning} Your record was kept — review the other entry if it looks
-							wrong.
-						</Alert>
-					) : null}
+					{warning ? <Alert variant="warning">Saved with a note: {warning}</Alert> : null}
 					<DialogFooter>
 						<Button type="button" variant="ghost" onClick={onClose}>
 							Cancel

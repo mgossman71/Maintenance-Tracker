@@ -6,7 +6,7 @@ import { parse } from "../http/validation";
 import { getEquipmentRow } from "../services/equipment";
 import { listEvents } from "../services/events";
 import { readSettings } from "../services/settings";
-import { computeTaskStatus, latestApplicableEvent, toTaskDto } from "../services/status";
+import { computeTaskStatus, toTaskDto } from "../services/status";
 import { deleteTask, getTaskRow, updateTask } from "../services/tasks";
 import type { AppVariables } from "../types";
 
@@ -20,11 +20,11 @@ export function registerTaskRoutes(
 		const task = getTaskRow(db, c.req.param("id"));
 		const equipment = getEquipmentRow(db, task.equipmentId);
 		const settings = readSettings(db);
-		const latest = latestApplicableEvent(listEvents(db, task.equipmentId, task.id));
+		const events = listEvents(db, task.equipmentId, task.id);
 		const status = computeTaskStatus(
 			task,
 			equipment,
-			latest,
+			events,
 			settings,
 			todayLocalDate(config.timezone),
 		);

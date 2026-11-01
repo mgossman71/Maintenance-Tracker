@@ -20,9 +20,12 @@ export function toEquipmentDto(row: EquipmentRow): EquipmentDto {
 		model: row.model,
 		year: row.year,
 		description: row.description,
-		meterKind: row.meterKind,
-		currentMeter: row.currentMeter,
-		meterVerifiedAt: row.meterVerifiedAt,
+		hasMiles: row.hasMiles,
+		hasHours: row.hasHours,
+		currentMiles: row.currentMiles,
+		currentHours: row.currentHours,
+		milesVerifiedAt: row.milesVerifiedAt,
+		hoursVerifiedAt: row.hoursVerifiedAt,
 		archivedAt: row.archivedAt,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
@@ -37,8 +40,10 @@ export function toTaskDto(row: MaintenanceTaskRow): TaskDto {
 		description: row.description,
 		presetId: row.presetId,
 		enabled: row.enabled,
-		meterEnabled: row.meterEnabled,
-		meterInterval: row.meterInterval,
+		milesEnabled: row.milesEnabled,
+		milesInterval: row.milesInterval,
+		hoursEnabled: row.hoursEnabled,
+		hoursInterval: row.hoursInterval,
 		calendarEnabled: row.calendarEnabled,
 		calendarValue: row.calendarValue,
 		calendarUnit: row.calendarUnit,
@@ -55,7 +60,8 @@ export function toEventDto(row: MaintenanceEventRow): EventDto {
 		label: row.label,
 		source: row.source,
 		performedOn: row.performedOn,
-		meter: row.meter,
+		meterMiles: row.meterMiles,
+		meterHours: row.meterHours,
 		notes: row.notes,
 		serviceProvider: row.serviceProvider,
 		costCents: row.costCents,
@@ -66,13 +72,18 @@ export function toEventDto(row: MaintenanceEventRow): EventDto {
 }
 
 /**
- * Latest applicable event by performed date with the fixed tie-breaker:
- * highest meter value, then latest created timestamp, then lexicographically
- * greatest id. Never by insertion time alone.
+ * Latest applicable event by performed date; tie-breakers: latest created
+ * timestamp, then lexicographically greatest id. Never by insertion time
+ * alone. `pick` restricts the search to events that captured a specific
+ * dimension's reading (readings are optional per dimension on purpose).
  */
-export function latestApplicableEvent(rows: MaintenanceEventRow[]): MaintenanceEventRow | null {
+export function latestApplicableEvent(
+	rows: MaintenanceEventRow[],
+	pick?: (row: MaintenanceEventRow) => number | null,
+): MaintenanceEventRow | null {
 	let best: MaintenanceEventRow | null = null;
 	for (const row of rows) {
+		if (pick && pick(row) === null) continue;
 		if (!best) {
 			best = row;
 			continue;
@@ -85,9 +96,6 @@ export function latestApplicableEvent(rows: MaintenanceEventRow[]): MaintenanceE
 /** > 0 when a is later than b under the ordering rules. */
 function compareEvents(a: MaintenanceEventRow, b: MaintenanceEventRow): number {
 	if (a.performedOn !== b.performedOn) return a.performedOn < b.performedOn ? -1 : 1;
-	const am = a.meter ?? -1;
-	const bm = b.meter ?? -1;
-	if (am !== bm) return am < bm ? -1 : 1;
 	if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? -1 : 1;
 	if (a.id === b.id) return 0;
 	return a.id < b.id ? -1 : 1;
@@ -95,8 +103,11 @@ function compareEvents(a: MaintenanceEventRow, b: MaintenanceEventRow): number {
 
 export function scheduleSummary(task: MaintenanceTaskRow): string {
 	const parts: string[] = [];
-	if (task.meterEnabled && task.meterInterval !== null) {
-		parts.push(`every ${formatMeter(task.meterInterval)} miles/hours`);
+	if (task.milesEnabled && task.milesInterval !== null) {
+		parts.push(`every ${formatMeter(task.milesInterval)} miles`);
+	}
+	if (task.hoursEnabled && task.hoursInterval !== null) {
+		parts.push(`every ${formatMeter(task.hoursInterval)} hours`);
 	}
 	if (task.calendarEnabled && task.calendarValue !== null && task.calendarUnit) {
 		const unitLabel = task.calendarValue === 1 ? singular(task.calendarUnit) : task.calendarUnit;
@@ -112,21 +123,31 @@ function singular(unit: string): string {
 export function computeTaskStatus(
 	task: MaintenanceTaskRow,
 	equipment: EquipmentRow,
-	latestEvent: MaintenanceEventRow | null,
+	taskEvents: MaintenanceEventRow[],
 	settings: SettingsDto,
 	today: string,
 ): TaskStatusDto {
+	// Each dimension resets from the latest service that captured ITS reading;
+	// a service that skipped the hour reading leaves the hour clock untouched.
+	const latestAny = latestApplicableEvent(taskEvents);
+	const latestMiles = latestApplicableEvent(taskEvents, (e) => e.meterMiles);
+	const latestHours = latestApplicableEvent(taskEvents, (e) => e.meterHours);
 	const result = evaluateTask({
-		meterKind: equipment.meterKind,
-		currentMeter: equipment.currentMeter,
+		hasMiles: equipment.hasMiles,
+		hasHours: equipment.hasHours,
+		currentMiles: equipment.currentMiles,
+		currentHours: equipment.currentHours,
 		task: {
-			meterEnabled: task.meterEnabled,
-			meterInterval: task.meterInterval,
+			milesEnabled: task.milesEnabled,
+			milesInterval: task.milesInterval,
+			hoursEnabled: task.hoursEnabled,
+			hoursInterval: task.hoursInterval,
 			calendarEnabled: task.calendarEnabled,
 			calendarValue: task.calendarValue,
 			calendarUnit: task.calendarUnit,
-			lastServiceDate: latestEvent?.performedOn ?? null,
-			lastServiceMeter: latestEvent?.meter ?? null,
+			lastServiceDate: latestAny?.performedOn ?? null,
+			lastServiceMiles: latestMiles?.meterMiles ?? null,
+			lastServiceHours: latestHours?.meterHours ?? null,
 		},
 		today,
 		warnMiles: settings.warnMiles,
@@ -138,12 +159,19 @@ export function computeTaskStatus(
 		equipmentId: task.equipmentId,
 		status: task.enabled ? result.status : "DISABLED",
 		disabled: !task.enabled,
-		meter: {
-			enabled: result.meter.enabled,
-			state: result.meter.state,
-			nextDueMeter: result.meter.nextDueMeter,
-			remainingMeter: result.meter.remainingMeter,
-			unknownReason: result.meter.unknownReason,
+		miles: {
+			enabled: result.miles.enabled,
+			state: result.miles.state,
+			nextDueMeter: result.miles.nextDueMeter,
+			remainingMeter: result.miles.remainingMeter,
+			unknownReason: result.miles.unknownReason,
+		},
+		hours: {
+			enabled: result.hours.enabled,
+			state: result.hours.state,
+			nextDueMeter: result.hours.nextDueMeter,
+			remainingMeter: result.hours.remainingMeter,
+			unknownReason: result.hours.unknownReason,
 		},
 		calendar: {
 			enabled: result.calendar.enabled,
@@ -154,8 +182,9 @@ export function computeTaskStatus(
 		},
 		driving: result.driving,
 		explanation: result.explanation,
-		lastServiceDate: latestEvent?.performedOn ?? null,
-		lastServiceMeter: latestEvent?.meter ?? null,
+		lastServiceDate: latestAny?.performedOn ?? null,
+		lastServiceMiles: latestMiles?.meterMiles ?? null,
+		lastServiceHours: latestHours?.meterHours ?? null,
 		scheduleSummary: scheduleSummary(task),
 	};
 }
@@ -196,8 +225,10 @@ export function computeAllStatuses(
 	for (const task of tasks) {
 		const eqRow = equipmentById.get(task.equipmentId);
 		if (!eqRow) continue;
-		const latest = latestApplicableEvent(eventsByTask.get(task.id) ?? []);
-		result.set(task.id, computeTaskStatus(task, eqRow, latest, settings, today));
+		result.set(
+			task.id,
+			computeTaskStatus(task, eqRow, eventsByTask.get(task.id) ?? [], settings, today),
+		);
 	}
 	return result;
 }

@@ -41,7 +41,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
 		timezone: env.TZ ?? "America/Chicago",
 		webDist: env.MT_WEB_DIST ?? resolve(import.meta.dirname, "../../web/dist"),
 		secureCookies: bool(env.MT_SECURE_COOKIES, true),
-		version: env.MT_VERSION ?? "0.3.0",
+		version: env.MT_VERSION ?? "0.4.0",
 	};
 	if (config.sessionIdleDays < 1) throw new Error("MT_SESSION_IDLE_DAYS must be >= 1");
 	if (config.sessionAbsoluteDays < config.sessionIdleDays) {

@@ -26,9 +26,14 @@ export const equipment = sqliteTable(
 		model: text("model"),
 		year: integer("year"),
 		description: text("description"),
-		meterKind: text("meter_kind", { enum: ["miles", "hours", "none"] }).notNull(),
-		currentMeter: integer("current_meter"), // tenths
-		meterVerifiedAt: text("meter_verified_at"),
+		// A machine may carry a mile meter, an hour meter, or both
+		// (e.g. a diesel truck with an engine-hour meter).
+		hasMiles: integer("has_miles", { mode: "boolean" }).notNull().default(false),
+		hasHours: integer("has_hours", { mode: "boolean" }).notNull().default(false),
+		currentMiles: integer("current_miles"), // tenths
+		currentHours: integer("current_hours"), // tenths
+		milesVerifiedAt: text("miles_verified_at"),
+		hoursVerifiedAt: text("hours_verified_at"),
 		archivedAt: text("archived_at"),
 		...timestamps,
 	},
@@ -42,6 +47,9 @@ export const meterReadings = sqliteTable(
 		equipmentId: text("equipment_id")
 			.notNull()
 			.references(() => equipment.id, { onDelete: "cascade" }),
+		kind: text("kind", { enum: ["miles", "hours"] })
+			.notNull()
+			.default("miles"),
 		value: integer("value").notNull(), // tenths
 		mode: text("mode", { enum: ["increase", "confirm", "correction"] }).notNull(),
 		recordedAt: text("recorded_at").notNull(),
@@ -61,8 +69,11 @@ export const maintenanceTasks = sqliteTable(
 		presetId: text("preset_id"),
 		enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
 		// Independent dimension flags: disabling a dimension never erases its interval.
-		meterEnabled: integer("meter_enabled", { mode: "boolean" }).notNull().default(true),
-		meterInterval: integer("meter_interval"), // tenths
+		// A task can be due on miles, hours, and/or calendar — whichever comes first.
+		milesEnabled: integer("miles_enabled", { mode: "boolean" }).notNull().default(false),
+		milesInterval: integer("miles_interval"), // tenths
+		hoursEnabled: integer("hours_enabled", { mode: "boolean" }).notNull().default(false),
+		hoursInterval: integer("hours_interval"), // tenths
 		calendarEnabled: integer("calendar_enabled", { mode: "boolean" }).notNull().default(false),
 		calendarValue: integer("calendar_value"),
 		calendarUnit: text("calendar_unit", { enum: ["days", "weeks", "months", "years"] }),
@@ -84,7 +95,8 @@ export const maintenanceEvents = sqliteTable(
 			.notNull()
 			.default("service"),
 		performedOn: text("performed_on").notNull(), // YYYY-MM-DD
-		meter: integer("meter"), // tenths
+		meterMiles: integer("meter_miles"), // tenths at service
+		meterHours: integer("meter_hours"), // tenths at service
 		notes: text("notes"),
 		serviceProvider: text("service_provider"),
 		costCents: integer("cost_cents"),

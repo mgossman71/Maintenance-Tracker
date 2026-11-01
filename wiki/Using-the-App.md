@@ -11,23 +11,26 @@ soon as anything on it is **Overdue**, then Due now, Due soon, Needs
 baseline, and all-OK equipment settles at the bottom. Equipment with no
 tasks still gets a card (marked _Untracked_) so nothing is invisible here.
 
-Each card: **name (link), worst-status badge, current reading**, then one
+Each card: **name (link), worst-status badge, current readings**, then one
 row per task — **task · status badge · schedule summary** ("Next: 16,100
 mi · 3,000 mi to go") with a **Record service** button that opens the
-service dialog with that task pre-selected. Cards containing overdue work
-get a red border so problems pop out at a glance.
+service dialog with that task pre-selected. Two-meter machines show both
+readings ("12,345.6 mi · 340.0 h"). Cards containing overdue work get a red
+border so problems pop out at a glance.
 
-One **Update reading** button per card opens the quick odometer/hour
-dialog; if the reading looks stale, the card says so inline.
+One **Update reading** button per card opens the quick dialog (a field for
+each meter the machine carries); if a reading looks stale, the card says so
+inline, naming which meter.
 
 ## Equipment list
 
 - Search box filters by name, make, and model.
 - **Show archived** checkbox switches to archived equipment.
-- **Add equipment**: name (required), meter kind (_Miles / Operating hours /
-  No meter_), optional category, make, model, year, description, and the
-  current reading. The meter kind locks once readings or meter tasks exist —
-  pick carefully.
+- **Add equipment**: name (required), **Tracks** checkboxes (_Miles_ and/or
+  _Hours_; leave both off for calendar-only), optional category, make, model,
+  year, description, and the current reading(s). You can add a meter later
+  (its reading just starts empty); removing one is refused while history or
+  tasks still use it.
 - Click a card to open its detail page.
 
 ## Equipment detail — Tasks tab
@@ -39,13 +42,16 @@ amount/days. Per task: **Record maintenance**, **Edit interval**, edit
 **New task** dialog:
 
 1. Optionally pick a preset to pre-fill names/intervals.
-2. Task name; enable the meter dimension (interval) and/or calendar
-   dimension (value + unit days/weeks/months/years).
-3. **Baseline** (strongly recommended): date — and meter reading for meter
-   kinds — of the last time it was done. Skip it and the task shows
-   _Needs baseline_ until the first service is recorded.
-4. The dialog shows a **live next-due preview** as you type — you see
-   "Next due: 15,000 mi / 2027-01-10" before saving.
+2. Task name; enable any of the **miles**, **hours**, and **calendar**
+   dimensions (only the meters this machine carries are offered), each with
+   its own interval.
+3. **Baseline** (strongly recommended): date — plus last miles and/or last
+   hours, whichever you know — of the last time it was done. Skip it and a
+   dimension without a baseline reading shows _Needs baseline_ until the
+   first service is recorded.
+4. The dialog shows a **live next-due preview** as you type — every enabled
+   dimension ("1,500 mi (500 left) or 290 h (50 over)") before saving. The
+   task becomes due when whichever comes **first**.
 
 **Edit interval** opens the same editor focused on intervals, with a preview
 comparing old vs new next-due. Saves apply prospectively; history is never
@@ -54,8 +60,8 @@ touched.
 ## Equipment detail — History tab
 
 All service events newest-first, filterable by task. Each card: date, task
-or free label, meter at service, cost, provider, parts, notes, photo
-thumbnails (click to view full-size; PDFs download).
+or free label, miles and/or hours at service, cost, provider, parts, notes,
+photo thumbnails (click to view full-size; PDFs download).
 
 - **Record maintenance** (top right) for anything — even tasks that don't
   exist as tasks at all (leave the task blank and type a label).
@@ -107,22 +113,26 @@ the per-file size limit (`MT_MAX_UPLOAD_MB`).
 
 ## Equipment detail — Info tab
 
-- **Details** card: edit name/category/make/model/year/description.
-- **Current reading** card (meter kinds only): shows the reading and when it
-  was last verified, with **Update reading**, **Confirm same reading**, and
-  **Correct reading** (see [Concepts](Concepts#readings-update-confirm-correct)).
-  Every reading change is listed in the reading history below.
+- **Details** card: edit name/category/make/model/year/description, plus each
+  meter's current reading and when it was last verified.
+- **One meter card per meter** the machine carries (Mile meter, Hour meter):
+  its reading, verified date, and **Update reading**, **Confirm same
+  reading**, and **Correct reading** (see
+  [Concepts](Concepts#readings-update-confirm-correct)).
+  Every reading change is tagged with its meter in the reading history.
 - **Danger zone**: archive/restore, and **delete equipment** — the
   confirmation lists exactly what cascades away (tasks, events, documents,
   files on disk). Archived items keep everything and can be restored.
 
 ## Service dialog (Record maintenance)
 
-Date performed (defaults to today) · task (optional) · meter reading (when
-the task needs one) · notes · service provider · cost · parts used ·
-**photos** (multiple images attached to the record). Saving a future-dated
-or pre-baseline service shows an informational warning but is allowed —
-backfilling is a first-class use case.
+Date performed (defaults to today) · task (optional) · **miles at service**
+and/or **hours at service**, prefilled from the current readings — clear one
+to leave that schedule where it is (the app warns you it won't advance) ·
+notes · service provider · cost · parts used · **photos** (multiple images
+attached to the record). Saving a future-dated or pre-baseline service shows
+an informational warning but is allowed — backfilling is a first-class use
+case.
 
 ## Settings
 

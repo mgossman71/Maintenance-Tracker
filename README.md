@@ -11,15 +11,17 @@ One password protects everything; no accounts, no cloud, no telemetry.
 
 ## Features
 
-- **Equipment** — trucks, cars, mowers, boats, generators… with mile meters,
-  hour meters, or calendar-only.
-- **Tasks** — “Oil Change every 5,000 miles or 12 months.” Change an interval
-  any time: recalculation is prospective and never rewrites history.
+- **Equipment** — trucks, cars, mowers, boats, generators… with a mile meter,
+  an hour meter, **both** (a diesel pickup counting 12,000 mi and 340 h), or
+  calendar-only.
+- **Tasks** — “Change oil every 5,000 miles or 250 hours or 12 months,
+  whichever comes first.” Each dimension tracks its own schedule; change an
+  interval any time and recalculation is prospective, never rewriting history.
 - **Status** — OK / Due soon / Due now / Overdue / Needs baseline per task,
-  inside one card per vehicle on the dashboard. Warning thresholds are
-  configurable.
-- **History** — every service with date, meter, cost, parts, notes, photos.
-  Backfill old records freely; corrections never destroy data.
+  inside one card per vehicle on the dashboard. The most urgent dimension
+  drives the badge. Warning thresholds are configurable.
+- **History** — every service with date, miles/hours at service, cost, parts,
+  notes, photos. Backfill old records freely; corrections never destroy data.
 - **Fuel economy** — a dedicated Fuel page (plus a per-vehicle tab) for
   mile-based equipment: log fill-ups (odometer + gallons, price optional)
   and get per-interval and blended MPG plus fuel cost totals.

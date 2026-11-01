@@ -103,7 +103,7 @@ rename scripts they depend on.
 
 ## Releasing / versioning
 
-Version string lives in the server config (`MT_VERSION`, default `0.3.0`).
+Version string lives in the server config (`MT_VERSION`, default `0.4.0`).
 Tag releases on `main`; Docker image builds from `docker/Dockerfile` with
 `--build-arg`-free defaults. Keep `bun.lock` committed — CI installs
 `--frozen-lockfile`.

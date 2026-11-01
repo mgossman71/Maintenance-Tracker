@@ -1,4 +1,4 @@
-import type { EquipmentDto, EventDto, FuelSummary } from "@mt/shared";
+import type { EquipmentDto, EventDto, FuelSummary, TaskStatusDto } from "@mt/shared";
 import { formatGallons, formatMeter, parseMeterToTenths } from "@mt/shared";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import {
@@ -146,12 +146,7 @@ export function EquipmentListPage() {
 									{[item.year, item.make, item.model].filter(Boolean).join(" ") ||
 										item.category ||
 										"—"}
-									{item.currentMeter !== null && (
-										<>
-											{" · "}
-											{formatMeterWithUnit(item.currentMeter, item.meterKind)}
-										</>
-									)}
+									{readingSummary(item)}
 								</p>
 							</div>
 						</div>
@@ -195,12 +190,7 @@ export function EquipmentDetailPage() {
 						{[equipment.year, equipment.make, equipment.model].filter(Boolean).join(" ") ||
 							equipment.category ||
 							""}
-						{equipment.currentMeter !== null && (
-							<>
-								{" · "}
-								{formatMeterWithUnit(equipment.currentMeter, equipment.meterKind)}
-							</>
-						)}
+						{readingSummary(equipment)}
 					</p>
 				</div>
 				<Button variant="outline" size="sm" onClick={() => setEditing(true)}>
@@ -212,7 +202,7 @@ export function EquipmentDetailPage() {
 				<TabsList>
 					<TabsTrigger value="tasks">Tasks</TabsTrigger>
 					<TabsTrigger value="history">History</TabsTrigger>
-					{equipment.meterKind === "miles" && <TabsTrigger value="fuel">Fuel</TabsTrigger>}
+					{equipment.hasMiles && <TabsTrigger value="fuel">Fuel</TabsTrigger>}
 					<TabsTrigger value="documents">Documents</TabsTrigger>
 					<TabsTrigger value="info">Info</TabsTrigger>
 				</TabsList>
@@ -222,7 +212,7 @@ export function EquipmentDetailPage() {
 				<TabsContent value="history">
 					<HistoryTab equipment={equipment} />
 				</TabsContent>
-				{equipment.meterKind === "miles" && (
+				{equipment.hasMiles && (
 					<TabsContent value="fuel">
 						<FuelTab equipment={equipment} />
 					</TabsContent>
@@ -291,29 +281,20 @@ function TasksTab({ equipment }: { equipment: EquipmentDto }) {
 									</Badge>
 								</div>
 								<p className="mt-0.5 text-sm text-muted-foreground">{status.scheduleSummary}</p>
-								<p className="mt-1 text-sm">
-									{status.meter.nextDueMeter !== null && (
-										<>
-											Due at{" "}
-											<span className="font-medium">
-												{formatMeterWithUnit(status.meter.nextDueMeter, equipment.meterKind)}
-											</span>{" "}
-										</>
-									)}
-									{status.calendar.nextDueDate !== null && (
-										<>
-											{status.meter.nextDueMeter !== null ? "or " : "Due "}
-											<span className="font-medium">{formatDate(status.calendar.nextDueDate)}</span>
-										</>
-									)}
-									{status.lastServiceDate && (
-										<span className="text-muted-foreground">
-											{"  "}· last done {formatDate(status.lastServiceDate)}
-											{status.lastServiceMeter !== null &&
-												` at ${formatMeterWithUnit(status.lastServiceMeter, equipment.meterKind)}`}
-										</span>
-									)}
-								</p>
+								{dueParts(status).length > 0 && (
+									<p className="mt-1 text-sm">
+										Due <span className="font-medium">{dueParts(status).join(" or ")}</span>
+										{status.lastServiceDate && (
+											<span className="text-muted-foreground">
+												{"  "}· last done {formatDate(status.lastServiceDate)}
+												{status.lastServiceMiles !== null &&
+													` at ${formatMeterWithUnit(status.lastServiceMiles, "miles")}`}
+												{status.lastServiceHours !== null &&
+													` / ${formatMeterWithUnit(status.lastServiceHours, "hours")}`}
+											</span>
+										)}
+									</p>
+								)}
 								{status.explanation ? (
 									<p className="mt-1 text-xs text-warning">{status.explanation}</p>
 								) : null}
@@ -371,10 +352,8 @@ function TasksTab({ equipment }: { equipment: EquipmentDto }) {
 				<RecordServiceDialog
 					open
 					onClose={() => setRecordTask(null)}
-					equipmentId={equipment.id}
+					equipment={equipment}
 					defaultTaskId={recordTask}
-					currentMeter={equipment.currentMeter}
-					meterKind={equipment.meterKind}
 				/>
 			)}
 		</div>
@@ -438,8 +417,11 @@ function HistoryTab({ equipment }: { equipment: EquipmentDto }) {
 								</div>
 								<p className="text-sm text-muted-foreground">
 									{formatDate(event.performedOn)}
-									{event.meter !== null && (
-										<> · {formatMeterWithUnit(event.meter, equipment.meterKind)}</>
+									{event.meterMiles !== null && (
+										<> · {formatMeterWithUnit(event.meterMiles, "miles")}</>
+									)}
+									{event.meterHours !== null && (
+										<> · {formatMeterWithUnit(event.meterHours, "hours")}</>
 									)}
 									{" · "}
 									{taskName}
@@ -504,7 +486,7 @@ function HistoryTab({ equipment }: { equipment: EquipmentDto }) {
 				<EditEventDialog
 					event={editingEvent}
 					onClose={() => setEditingEvent(null)}
-					meterKind={equipment.meterKind}
+					equipment={equipment}
 				/>
 			)}
 		</div>
@@ -514,23 +496,30 @@ function HistoryTab({ equipment }: { equipment: EquipmentDto }) {
 function EditEventDialog({
 	event,
 	onClose,
-	meterKind,
+	equipment,
 }: {
 	event: EventDto;
 	onClose: () => void;
-	meterKind: string;
+	equipment: EquipmentDto;
 }) {
 	const [date, setDate] = useState(event.performedOn);
-	const [meter, setMeter] = useState(event.meter !== null ? _fmtTenths(event.meter) : "");
+	const [miles, setMiles] = useState(event.meterMiles !== null ? _fmtTenths(event.meterMiles) : "");
+	const [hours, setHours] = useState(event.meterHours !== null ? _fmtTenths(event.meterHours) : "");
 	const [notes, setNotes] = useState(event.notes ?? "");
 	const [cost, setCost] = useState(event.costCents !== null ? String(event.costCents / 100) : "");
 	const [error, setError] = useState<string | null>(null);
+
+	const parse = (v: string) => (v.trim() === "" ? null : parseTenths(v));
+	const invalid =
+		(miles.trim() !== "" && parse(miles) === null) ||
+		(hours.trim() !== "" && parse(hours) === null);
 
 	const save = useWrite(
 		() =>
 			api.patch(`/api/events/${event.id}`, {
 				performedOn: date,
-				meter: meter.trim() === "" ? null : parseTenths(meter),
+				...(equipment.hasMiles && { meterMiles: parse(miles) }),
+				...(equipment.hasHours && { meterHours: parse(hours) }),
 				notes: notes.trim() || null,
 				costCents: cost.trim() === "" ? null : Math.round(Number.parseFloat(cost) * 100),
 			}),
@@ -552,16 +541,34 @@ function EditEventDialog({
 						<Field label="Date">
 							<Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
 						</Field>
-						<Field label={meterKind === "none" ? "Meter" : `Meter (${meterKind})`}>
-							<Input inputMode="decimal" value={meter} onChange={(e) => setMeter(e.target.value)} />
+						<Field label="Cost (USD)">
+							<Input inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value)} />
 						</Field>
 					</div>
-					<Field label="Cost (USD)">
-						<Input inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value)} />
-					</Field>
+					<div className="grid grid-cols-2 gap-3">
+						{equipment.hasMiles && (
+							<Field label="Miles at service">
+								<Input
+									inputMode="decimal"
+									value={miles}
+									onChange={(e) => setMiles(e.target.value)}
+								/>
+							</Field>
+						)}
+						{equipment.hasHours && (
+							<Field label="Hours at service">
+								<Input
+									inputMode="decimal"
+									value={hours}
+									onChange={(e) => setHours(e.target.value)}
+								/>
+							</Field>
+						)}
+					</div>
 					<Field label="Notes">
 						<Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
 					</Field>
+					{error ? <Alert3>{error}</Alert3> : null}
 					{save.error ? (
 						<Alert3>
 							{save.error instanceof ApiClientError ? save.error.message : "Save failed"}
@@ -571,7 +578,7 @@ function EditEventDialog({
 						<Button type="button" variant="ghost" onClick={onClose}>
 							Cancel
 						</Button>
-						<Button type="submit" disabled={save.isPending}>
+						<Button type="submit" disabled={save.isPending || invalid}>
 							{save.isPending ? "Saving…" : "Save"}
 						</Button>
 					</DialogFooter>
@@ -902,6 +909,7 @@ function SummaryCard({ label, value, hint }: { label: string; value: string; hin
 // --- Info tab ---------------------------------------------------------------
 
 function InfoTab({ equipment }: { equipment: EquipmentDto }) {
+	const [readingUnit, setReadingUnit] = useState<"miles" | "hours" | null>(null);
 	const [readingMode, setReadingMode] = useState<"increase" | "correction" | null>(null);
 	const [readingValue, setReadingValue] = useState("");
 	const remove = useWrite(() => api.delete(`/api/equipment/${equipment.id}`), {
@@ -911,19 +919,81 @@ function InfoTab({ equipment }: { equipment: EquipmentDto }) {
 		api.patch(`/api/equipment/${equipment.id}`, { archived: !equipment.archivedAt }),
 	);
 
-	const confirm = useWrite(() =>
-		api.post(`/api/equipment/${equipment.id}/reading`, { mode: "confirm" }),
+	const confirm = useWrite((unit: "miles" | "hours") =>
+		api.post(`/api/equipment/${equipment.id}/reading`, { kind: unit, mode: "confirm" }),
 	);
 	const submitReading = useWrite(
 		() =>
 			api.post(`/api/equipment/${equipment.id}/reading`, {
+				kind: readingUnit ?? "miles",
 				mode: readingMode ?? "increase",
 				value: parseTenths(readingValue),
 			}),
-		{ onDone: () => setReadingMode(null) },
+		{
+			onDone: () => {
+				setReadingMode(null);
+				setReadingUnit(null);
+			},
+		},
 	);
 
 	const invalid = readingValue.trim() === "" || parseTenths(readingValue) === null;
+
+	const meterPanel = (unit: "miles" | "hours") => {
+		const current = unit === "miles" ? equipment.currentMiles : equipment.currentHours;
+		const verifiedAt = unit === "miles" ? equipment.milesVerifiedAt : equipment.hoursVerifiedAt;
+		return (
+			<Card>
+				<CardContent className="grid gap-2">
+					<div className="flex flex-wrap items-baseline justify-between gap-2">
+						<p className="text-sm font-medium">{unit === "miles" ? "Mile meter" : "Hour meter"}</p>
+						<p className="text-sm text-muted-foreground">
+							{formatMeterWithUnit(current, unit)}
+							{verifiedAt ? ` · verified ${formatDate(verifiedAt)}` : ""}
+						</p>
+					</div>
+					<div className="flex flex-wrap gap-2">
+						<Button
+							size="sm"
+							onClick={() => {
+								setReadingUnit(unit);
+								setReadingMode("increase");
+								setReadingValue("");
+							}}
+						>
+							Update reading
+						</Button>
+						<Button
+							size="sm"
+							variant="outline"
+							disabled={current === null}
+							onClick={() => confirm.mutate(unit)}
+						>
+							Confirm same reading
+						</Button>
+						<Button
+							size="sm"
+							variant="outline"
+							onClick={() => {
+								setReadingUnit(unit);
+								setReadingMode("correction");
+								setReadingValue("");
+							}}
+						>
+							Correct reading
+						</Button>
+					</div>
+					{submitReading.error ? (
+						<p className="text-sm text-destructive">
+							{submitReading.error instanceof ApiClientError
+								? submitReading.error.message
+								: "Save failed"}
+						</p>
+					) : null}
+				</CardContent>
+			</Card>
+		);
+	};
 
 	return (
 		<div className="grid gap-4">
@@ -935,63 +1005,40 @@ function InfoTab({ equipment }: { equipment: EquipmentDto }) {
 						value={[equipment.make, equipment.model].filter(Boolean).join(" ") || "—"}
 					/>
 					<InfoRow label="Year" value={equipment.year?.toString() ?? "—"} />
-					<InfoRow label="Meter" value={equipment.meterKind} />
 					<InfoRow
-						label="Current reading"
-						value={formatMeterWithUnit(equipment.currentMeter, equipment.meterKind)}
+						label="Meters"
+						value={
+							[equipment.hasMiles && "miles", equipment.hasHours && "hours"]
+								.filter(Boolean)
+								.join(" + ") || "none (calendar only)"
+						}
 					/>
-					<InfoRow label="Reading verified" value={formatDate(equipment.meterVerifiedAt)} />
+					{equipment.hasMiles && (
+						<InfoRow
+							label="Current miles"
+							value={`${formatMeterWithUnit(equipment.currentMiles, "miles")} · verified ${formatDate(equipment.milesVerifiedAt)}`}
+						/>
+					)}
+					{equipment.hasHours && (
+						<InfoRow
+							label="Current hours"
+							value={`${formatMeterWithUnit(equipment.currentHours, "hours")} · verified ${formatDate(equipment.hoursVerifiedAt)}`}
+						/>
+					)}
 					{equipment.description ? <InfoRow label="Notes" value={equipment.description} /> : null}
 				</CardContent>
 			</Card>
 
-			{equipment.meterKind !== "none" && (
-				<Card>
-					<CardContent className="grid gap-2">
-						<p className="text-sm font-medium">Meter reading</p>
-						<div className="flex flex-wrap gap-2">
-							<Button
-								size="sm"
-								onClick={() => {
-									setReadingMode("increase");
-									setReadingValue("");
-								}}
-							>
-								Update reading
-							</Button>
-							<Button
-								size="sm"
-								variant="outline"
-								disabled={equipment.currentMeter === null}
-								onClick={() => confirm.mutate()}
-							>
-								Confirm same reading
-							</Button>
-							<Button
-								size="sm"
-								variant="outline"
-								onClick={() => {
-									setReadingMode("correction");
-									setReadingValue("");
-								}}
-							>
-								Correct reading
-							</Button>
-						</div>
-						{submitReading.error ? (
-							<p className="text-sm text-destructive">
-								{submitReading.error instanceof ApiClientError
-									? submitReading.error.message
-									: "Save failed"}
-							</p>
-						) : null}
-					</CardContent>
-				</Card>
-			)}
+			{equipment.hasMiles && meterPanel("miles")}
+			{equipment.hasHours && meterPanel("hours")}
 
 			<Dialog open={readingMode !== null} onOpenChange={(o) => !o && setReadingMode(null)}>
 				<DialogContent
-					title={readingMode === "correction" ? "Correct current reading" : "Update reading"}
+					title={
+						readingMode === "correction"
+							? `Correct current ${readingUnit ?? "meter"} reading`
+							: `Update ${readingUnit ?? "meter"} reading`
+					}
 				>
 					<form
 						className="grid gap-4"
@@ -1001,7 +1048,7 @@ function InfoTab({ equipment }: { equipment: EquipmentDto }) {
 						}}
 					>
 						<Field
-							label={`Current ${equipment.meterKind}`}
+							label={`Current ${readingUnit ?? ""}`}
 							hint={
 								readingMode === "correction"
 									? "Corrections are kept in the reading history and never rewrite service records."
@@ -1072,7 +1119,12 @@ function DeleteEquipmentCard({
 							Removes {equipment.name} with all tasks, readings, and history. Cannot be undone.
 						</p>
 					</div>
-					<Button variant="destructive" size="sm" onClick={() => setConfirming(true)}>
+					<Button
+						variant="destructive"
+						size="sm"
+						disabled={pending}
+						onClick={() => setConfirming(true)}
+					>
 						Delete…
 					</Button>
 				</CardContent>
@@ -1116,11 +1168,15 @@ export function EquipmentDialog({
 	const [model, setModel] = useState(equipment?.model ?? "");
 	const [year, setYear] = useState(equipment?.year?.toString() ?? "");
 	const [description, setDescription] = useState(equipment?.description ?? "");
-	const [meterKind, setMeterKind] = useState(equipment?.meterKind ?? "miles");
-	const [currentMeter, setCurrentMeter] = useState(
-		equipment?.currentMeter != null ? _fmtTenths(equipment.currentMeter) : "",
-	);
+	const [hasMiles, setHasMiles] = useState(equipment?.hasMiles ?? true);
+	const [hasHours, setHasHours] = useState(equipment?.hasHours ?? false);
+	// Edit mode starts blank: untouched fields are omitted from the PATCH so
+	// saving an edit never writes a new reading or refreshes verification.
+	const [currentMiles, setCurrentMiles] = useState("");
+	const [currentHours, setCurrentHours] = useState("");
 	const [error, setError] = useState<string | null>(null);
+
+	const parse = (v: string) => (v.trim() === "" ? null : parseTenths(v));
 
 	const save = useWrite(
 		async () => {
@@ -1133,18 +1189,29 @@ export function EquipmentDialog({
 				description: description.trim() || null,
 			};
 			if (equipment) {
-				return api.patch(`/api/equipment/${equipment.id}`, { ...body, meterKind });
+				// A filled-in value may also set a newly added meter's first reading.
+				return api.patch(`/api/equipment/${equipment.id}`, {
+					...body,
+					hasMiles,
+					hasHours,
+					...(currentMiles.trim() !== "" && { currentMiles: parse(currentMiles) }),
+					...(currentHours.trim() !== "" && { currentHours: parse(currentHours) }),
+				});
 			}
 			return api.post("/api/equipment", {
 				...body,
-				meterKind,
-				currentMeter: currentMeter.trim() === "" ? null : parseTenths(currentMeter),
+				hasMiles,
+				hasHours,
+				currentMiles: parse(currentMiles),
+				currentHours: parse(currentHours),
 			});
 		},
 		{ onDone: onClose },
 	);
 
-	const meterInvalid = currentMeter.trim() !== "" && parseTenths(currentMeter) === null;
+	const meterInvalid =
+		(currentMiles.trim() !== "" && parse(currentMiles) === null) ||
+		(currentHours.trim() !== "" && parse(currentHours) === null);
 
 	return (
 		<Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -1192,38 +1259,86 @@ export function EquipmentDialog({
 							<Input value={model} onChange={(e) => setModel(e.target.value)} />
 						</Field>
 					</div>
-					{!equipment && (
-						<Field
-							label="Tracks"
-							hint="Miles and hours drive interval schedules; “no meter” is calendar-only."
-						>
-							<Select
-								value={meterKind}
-								onValueChange={(v) => setMeterKind(v as EquipmentDto["meterKind"])}
-							>
-								<SelectTrigger aria-label="Tracks">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="miles">Miles (vehicles)</SelectItem>
-									<SelectItem value="hours">Operating hours (machines)</SelectItem>
-									<SelectItem value="none">No meter (calendar only)</SelectItem>
-								</SelectContent>
-							</Select>
-						</Field>
-					)}
-					{meterKind !== "none" && (
-						<Field
-							label={`Current ${meterKind} (optional)`}
-							error={meterInvalid ? "Number with at most one decimal." : undefined}
-						>
-							<Input
-								inputMode="decimal"
-								value={currentMeter}
-								onChange={(e) => setCurrentMeter(e.target.value)}
-								disabled={Boolean(equipment)}
-							/>
-						</Field>
+					<div>
+						<p className="mb-1.5 text-sm font-medium">Tracks</p>
+						<div className="flex flex-wrap gap-x-6 gap-y-2">
+							<label className="flex items-center gap-2 text-sm">
+								<input
+									type="checkbox"
+									checked={hasMiles}
+									onChange={(e) => setHasMiles(e.target.checked)}
+									aria-label="Has a mile meter"
+								/>
+								Miles (vehicles)
+							</label>
+							<label className="flex items-center gap-2 text-sm">
+								<input
+									type="checkbox"
+									checked={hasHours}
+									onChange={(e) => setHasHours(e.target.checked)}
+									aria-label="Has an hour meter"
+								/>
+								Hours (machines)
+							</label>
+						</div>
+						<p className="mt-1.5 text-xs text-muted-foreground">
+							A diesel truck can carry both. With no meter checked the equipment is calendar-only.
+							{equipment && " Removing a meter that already has readings or tasks is rejected."}
+						</p>
+					</div>
+					{(hasMiles || hasHours) && (
+						<div className="grid grid-cols-2 gap-3">
+							{hasMiles && (
+								<Field
+									label={equipment ? "New miles reading" : "Current miles (optional)"}
+									hint={
+										equipment && equipment.currentMiles !== null
+											? "Blank keeps the current reading."
+											: undefined
+									}
+									error={
+										currentMiles.trim() !== "" && parse(currentMiles) === null
+											? "Number with at most one decimal."
+											: undefined
+									}
+								>
+									<Input
+										inputMode="decimal"
+										value={currentMiles}
+										onChange={(e) => setCurrentMiles(e.target.value)}
+										placeholder={
+											equipment?.currentMiles != null
+												? formatMeter(equipment.currentMiles)
+												: "12,345"
+										}
+									/>
+								</Field>
+							)}
+							{hasHours && (
+								<Field
+									label={equipment ? "New hours reading" : "Current hours (optional)"}
+									hint={
+										equipment && equipment.currentHours !== null
+											? "Blank keeps the current reading."
+											: undefined
+									}
+									error={
+										currentHours.trim() !== "" && parse(currentHours) === null
+											? "Number with at most one decimal."
+											: undefined
+									}
+								>
+									<Input
+										inputMode="decimal"
+										value={currentHours}
+										onChange={(e) => setCurrentHours(e.target.value)}
+										placeholder={
+											equipment?.currentHours != null ? formatMeter(equipment.currentHours) : "145"
+										}
+									/>
+								</Field>
+							)}
+						</div>
 					)}
 					<Field label="Notes">
 						<Textarea
@@ -1252,6 +1367,26 @@ export function EquipmentDialog({
 }
 
 // helpers
+
+function dueParts(status: TaskStatusDto): string[] {
+	const parts: string[] = [];
+	if (status.miles.enabled && status.miles.nextDueMeter !== null)
+		parts.push(`at ${formatMeterWithUnit(status.miles.nextDueMeter, "miles")}`);
+	if (status.hours.enabled && status.hours.nextDueMeter !== null)
+		parts.push(`at ${formatMeterWithUnit(status.hours.nextDueMeter, "hours")}`);
+	if (status.calendar.enabled && status.calendar.nextDueDate !== null)
+		parts.push(formatDate(status.calendar.nextDueDate));
+	return parts;
+}
+
+function readingSummary(item: EquipmentDto): React.ReactNode {
+	const parts = [
+		item.hasMiles ? formatMeterWithUnit(item.currentMiles, "miles") : null,
+		item.hasHours ? formatMeterWithUnit(item.currentHours, "hours") : null,
+	].filter((s): s is string => s !== null && s !== "—");
+	if (parts.length === 0) return null;
+	return <>{` · ${parts.join(" · ")}`}</>;
+}
 
 function _fmtTenths(tenths: number): string {
 	return formatMeter(tenths);
