@@ -1,5 +1,7 @@
 import type {
+	AttachmentDto,
 	DashboardDto,
+	DocumentDto,
 	EquipmentDto,
 	EventDto,
 	PresetDto,
@@ -76,6 +78,16 @@ export function useEvents(equipmentId: string) {
 export function usePresets() {
 	return useQuery({ queryKey: keys.presets, queryFn: () => api.get<PresetDto[]>("/api/presets") });
 }
+
+export function useDocuments(equipmentId: string) {
+	return useQuery({
+		queryKey: ["documents", equipmentId],
+		queryFn: () => api.get<DocumentDto[]>(`/api/equipment/${equipmentId}/documents`),
+		enabled: Boolean(equipmentId),
+	});
+}
+
+export type { AttachmentDto, DocumentDto };
 
 export function useSettings() {
 	return useQuery({

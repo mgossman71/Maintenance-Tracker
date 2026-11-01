@@ -1,0 +1,40 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: maintenance-tracker:latest
+    container_name: maintenance-tracker
+    restart: unless-stopped
+    env_file:
+      - .env
+    # Keep the port on loopback unless you terminate TLS in front of this.
+    # With Nginx Proxy Manager, join the shared proxy network instead
+    # (see README "Nginx Proxy Manager").
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - mt_data:/data
+    networks:
+      - default
+      # - npm_proxy   # uncomment when using Nginx Proxy Manager
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  mt_data:
+
+networks:
+  default:
+  # npm_proxy:
+  #   external: true

@@ -1,7 +1,7 @@
 import type { EquipmentDto, EventDto } from "@mt/shared";
 import { formatMeter, parseMeterToTenths } from "@mt/shared";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { ChevronRight, Pencil, Plus, Wrench } from "lucide-react";
+import { ChevronRight, FileText, Pencil, Plus, Upload, Wrench } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ConfirmDialog, RecordServiceDialog } from "../components/dialogs";
 import { TaskDialog } from "../components/task-dialog";
@@ -26,6 +26,7 @@ import {
 	STATUS_LABEL,
 } from "../lib/format";
 import {
+	useDocuments,
 	useEquipment,
 	useEquipmentDetail,
 	useEvents,
@@ -430,6 +431,34 @@ function HistoryTab({ equipment }: { equipment: EquipmentDto }) {
 								{event.partsUsed ? (
 									<p className="text-xs text-muted-foreground">Parts: {event.partsUsed}</p>
 								) : null}
+								{(event.attachments?.length ?? 0) > 0 && (
+									<div className="mt-2 flex flex-wrap gap-2">
+										{event.attachments?.map((att) =>
+											SAFE_INLINE_IMAGES.includes(att.mimeType) ? (
+												<a
+													key={att.id}
+													href={`/api/attachments/${att.id}/download`}
+													title={att.filename}
+												>
+													<img
+														src={`/api/attachments/${att.id}/download`}
+														alt={att.filename}
+														className="size-16 rounded-md border border-border object-cover"
+													/>
+												</a>
+											) : (
+												<a
+													key={att.id}
+													href={`/api/attachments/${att.id}/download`}
+													download={att.filename}
+													className="flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
+												>
+													<FileText className="size-3.5" /> {att.filename}
+												</a>
+											),
+										)}
+									</div>
+								)}
 							</div>
 							<div className="flex shrink-0 gap-1">
 								<Button size="sm" variant="ghost" onClick={() => setEditingEvent(event)}>
@@ -539,13 +568,100 @@ function Alert3({ children }: { children: React.ReactNode }) {
 
 // --- Documents tab -----------------------------------------------------------
 
+const SAFE_INLINE_IMAGES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+
+function formatBytes(n: number): string {
+	if (n < 1024) return `${n} B`;
+	if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+	return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
 function DocumentsTab({ equipment }: { equipment: EquipmentDto }) {
+	const documents = useDocuments(equipment.id);
+	const remove = useWrite((id: string) => api.delete(`/api/documents/${id}`));
+	const [error, setError] = useState<string | null>(null);
+
+	const upload = useWrite(async (files: FileList) => {
+		setError(null);
+		for (const file of Array.from(files)) {
+			await api.upload(`/api/equipment/${equipment.id}/documents`, file);
+		}
+	});
+
+	const onFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+		if (e.target.files && e.target.files.length > 0) upload.mutate(e.target.files);
+		e.target.value = "";
+	};
+
 	return (
-		<Card>
-			<CardContent className="py-10 text-center text-muted-foreground">
-				Document uploads for {equipment.name} arrive with the attachments milestone.
-			</CardContent>
-		</Card>
+		<div className="grid gap-2">
+			<div className="flex items-center justify-between">
+				<p className="text-sm text-muted-foreground">
+					Manuals, receipts, photos. PNG, JPEG, GIF, WebP, PDF.
+				</p>
+				<label className="cursor-pointer">
+					<span className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90">
+						<Upload className="size-4" /> Upload
+					</span>
+					<input
+						type="file"
+						multiple
+						accept="image/png,image/jpeg,image/gif,image/webp,application/pdf"
+						className="sr-only"
+						onChange={onFiles}
+					/>
+				</label>
+			</div>
+			{upload.error ? (
+				<p className="text-sm text-destructive">
+					{upload.error instanceof ApiClientError ? upload.error.message : "Upload failed"}
+				</p>
+			) : null}
+			{error ? <p className="text-sm text-destructive">{error}</p> : null}
+			{documents.isPending ? <p className="text-muted-foreground">Loading documents…</p> : null}
+			{(documents.data ?? []).length === 0 && !documents.isPending && (
+				<Card>
+					<CardContent className="py-8 text-center text-muted-foreground">
+						No documents yet. Upload manuals, receipts, or photos.
+					</CardContent>
+				</Card>
+			)}
+			{(documents.data ?? []).map((doc) => (
+				<Card key={doc.id}>
+					<CardContent className="flex flex-wrap items-center justify-between gap-3">
+						<div className="flex min-w-0 items-center gap-3">
+							{SAFE_INLINE_IMAGES.includes(doc.mimeType) ? (
+								<img
+									src={`/api/documents/${doc.id}/download`}
+									alt={doc.filename}
+									className="size-12 rounded-md border border-border object-cover"
+								/>
+							) : (
+								<div className="flex size-12 items-center justify-center rounded-md bg-muted">
+									<FileText className="size-5 text-muted-foreground" />
+								</div>
+							)}
+							<div className="min-w-0">
+								<p className="truncate text-sm font-medium">{doc.filename}</p>
+								<p className="text-xs text-muted-foreground">
+									{formatBytes(doc.byteLength)} · {formatDate(doc.createdAt)}
+								</p>
+							</div>
+						</div>
+						<div className="flex shrink-0 gap-1">
+							<Button size="sm" variant="outline" asChild>
+								<a href={`/api/documents/${doc.id}/download`} download={doc.filename}>
+									Download
+								</a>
+							</Button>
+							<Button size="sm" variant="ghost" onClick={() => remove.mutate(doc.id)}>
+								Delete
+							</Button>
+						</div>
+					</CardContent>
+				</Card>
+			))}
+		</div>
 	);
 }
 

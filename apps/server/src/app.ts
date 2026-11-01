@@ -9,6 +9,7 @@ import type { ServerConfig } from "./config";
 import { registerAuthRoutes } from "./routes/auth";
 import { registerEquipmentRoutes } from "./routes/equipment";
 import { registerEventRoutes } from "./routes/events";
+import { registerFileRoutes } from "./routes/files";
 import { registerMiscRoutes } from "./routes/misc";
 import { registerTaskRoutes } from "./routes/tasks";
 import type { AppVariables } from "./types";
@@ -129,6 +130,7 @@ export function createApp({ db, config }: AppContext): Hono<AppVariables> {
 	registerTaskRoutes(app, db, config);
 	registerEventRoutes(app, db, config);
 	registerMiscRoutes(app, db, config);
+	registerFileRoutes(app, db, config);
 
 	// --- Health: unauthenticated, no sensitive content -----------------------
 	app.get("/health", (c) => c.json({ status: "ok", version: config.version }));

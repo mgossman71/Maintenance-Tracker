@@ -41,21 +41,31 @@ export function RecordServiceDialog({
 	const [cost, setCost] = useState("");
 	const [provider, setProvider] = useState("");
 	const [parts, setParts] = useState("");
+	const [photos, setPhotos] = useState<File[]>([]);
 	const [error, setError] = useState<string | null>(null);
 	const [warning, setWarning] = useState<string | null>(null);
 
 	const save = useWrite(
-		async () =>
-			api.post<{ event: unknown; warning: string | null }>(`/api/equipment/${equipmentId}/events`, {
-				taskId: selected?.task.id ?? null,
-				label: selected?.task.name ?? "Maintenance",
-				performedOn: date,
-				meter: meter.trim() === "" ? null : parseMeterToTenths(meter),
-				notes: notes.trim() || null,
-				serviceProvider: provider.trim() || null,
-				costCents: cost.trim() === "" ? null : Math.round(Number.parseFloat(cost) * 100),
-				partsUsed: parts.trim() || null,
-			}),
+		async () => {
+			const result = await api.post<{ event: { id: string }; warning: string | null }>(
+				`/api/equipment/${equipmentId}/events`,
+				{
+					taskId: selected?.task.id ?? null,
+					label: selected?.task.name ?? "Maintenance",
+					performedOn: date,
+					meter: meter.trim() === "" ? null : parseMeterToTenths(meter),
+					notes: notes.trim() || null,
+					serviceProvider: provider.trim() || null,
+					costCents: cost.trim() === "" ? null : Math.round(Number.parseFloat(cost) * 100),
+					partsUsed: parts.trim() || null,
+				},
+			);
+			// Attach photos after the event exists; failures still keep the record.
+			for (const file of photos) {
+				await api.upload(`/api/events/${result.event.id}/attachments`, file);
+			}
+			return result;
+		},
 		{
 			onDone: (data) => {
 				if (data.warning) setWarning(data.warning);
@@ -130,6 +140,23 @@ export function RecordServiceDialog({
 					</div>
 					<Field label="Parts used">
 						<Input value={parts} onChange={(e) => setParts(e.target.value)} />
+					</Field>
+					<Field
+						label="Photos (optional)"
+						hint="PNG, JPEG, GIF, WebP images attach to this record."
+					>
+						<input
+							type="file"
+							multiple
+							accept="image/png,image/jpeg,image/gif,image/webp"
+							onChange={(e) => setPhotos(Array.from(e.target.files ?? []))}
+							className="text-sm file:mr-3 file:rounded-md file:border file:border-border file:bg-muted file:px-3 file:py-1 file:text-xs"
+						/>
+						{photos.length > 0 && (
+							<p className="text-xs text-muted-foreground">
+								{photos.length} file{photos.length > 1 ? "s" : ""} selected
+							</p>
+						)}
 					</Field>
 					{error ? <Alert variant="error">{error}</Alert> : null}
 					{save.error ? (

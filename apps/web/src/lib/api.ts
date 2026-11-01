@@ -60,4 +60,21 @@ export const api = {
 	post: <T>(path: string, body?: unknown) => request<T>("POST", path, body ?? {}),
 	patch: <T>(path: string, body: unknown) => request<T>("PATCH", path, body),
 	delete: <T>(path: string) => request<T>("DELETE", path),
+	upload: async <T>(path: string, file: File): Promise<T> => {
+		const form = new FormData();
+		form.append("file", file);
+		const res = await fetch(path, { method: "POST", body: form, credentials: "same-origin" });
+		if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+		let data: unknown = null;
+		try {
+			data = await res.json();
+		} catch {
+			/* empty */
+		}
+		if (!res.ok) {
+			const err = (data as { error?: { code?: string; message?: string } })?.error;
+			throw new ApiClientError(res.status, err?.code ?? "error", err?.message ?? "Upload failed");
+		}
+		return data as T;
+	},
 };

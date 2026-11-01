@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AppDatabase } from "@mt/db";
 import { createAppDatabase, openDatabase, runMigrations, seedBuiltinPresets } from "@mt/db";
 import { createApp } from "./app";
@@ -14,8 +17,16 @@ export interface TestApp {
 		body?: unknown,
 		opts?: RequestOpts,
 	) => Promise<TestResponse>;
+	/** Multipart upload helper (no content-type set; fetch adds the boundary). */
+	requestForm: (
+		method: string,
+		path: string,
+		form: FormData,
+		opts?: RequestOpts,
+	) => Promise<TestResponse>;
 	db: AppDatabase;
 	config: ServerConfig;
+	tempDir: string;
 	login: () => Promise<void>;
 	setup: (password?: string) => Promise<void>;
 }
@@ -33,22 +44,44 @@ interface TestResponse {
 	headers: Headers;
 }
 
-export function createTestApp(): TestApp {
+export function createTestApp(env: Record<string, string> = {}): TestApp {
 	const raw = openDatabase(":memory:");
 	const db = createAppDatabase(raw);
 	runMigrations(db);
 	seedBuiltinPresets(db);
+	const tempDir = mkdtempSync(join(tmpdir(), "mt-test-"));
 	const config = loadConfig({
 		MT_SECURE_COOKIES: "0",
-		MT_DATA_DIR: "/tmp/mt-test-unused",
+		MT_DATA_DIR: tempDir,
 		TZ: "America/Chicago",
+		...env,
 	});
 	const app = createApp({ db, config });
 	let cookie: string | null = null;
 
+	const send = async (
+		method: string,
+		path: string,
+		body: BodyInit | undefined,
+		headers: Record<string, string>,
+		opts: RequestOpts,
+	): Promise<TestResponse> => {
+		const res = await app.fetch(new Request(`http://localhost${path}`, { method, headers, body }));
+		const setCookie = res.headers.get("set-cookie");
+		if (setCookie && !opts.anon) cookie = setCookie.split(";")[0] ?? null;
+		let data: unknown = null;
+		try {
+			data = await res.json();
+		} catch {
+			/* non-json */
+		}
+		return { status: res.status, data, headers: res.headers };
+	};
+
 	const instance: TestApp = {
 		db,
 		config,
+		tempDir,
 		async request(method, path, body, opts = {}) {
 			const headers: Record<string, string> = { ...opts.headers };
 			if (body !== undefined) headers["content-type"] = "application/json";
@@ -61,22 +94,25 @@ export function createTestApp(): TestApp {
 				headers.origin = "http://localhost"; // same-origin default
 			}
 			if (opts.secFetchSite) headers["sec-fetch-site"] = opts.secFetchSite;
-			const res = await app.fetch(
-				new Request(`http://localhost${path}`, {
-					method,
-					headers,
-					body: body === undefined ? undefined : JSON.stringify(body),
-				}),
+			return send(
+				method,
+				path,
+				body === undefined ? undefined : JSON.stringify(body),
+				headers,
+				opts,
 			);
-			const setCookie = res.headers.get("set-cookie");
-			if (setCookie && !opts.anon) cookie = setCookie.split(";")[0] ?? null;
-			let data: unknown = null;
-			try {
-				data = await res.json();
-			} catch {
-				/* non-json */
+		},
+		async requestForm(method, path, form, opts = {}) {
+			const headers: Record<string, string> = { ...opts.headers };
+			if (cookie && !opts.anon) headers.cookie = cookie;
+			if (opts.origin === null) {
+				/* omit */
+			} else if (opts.origin !== undefined) {
+				headers.origin = opts.origin;
+			} else if (method !== "GET") {
+				headers.origin = "http://localhost";
 			}
-			return { status: res.status, data, headers: res.headers };
+			return send(method, path, form, headers, opts);
 		},
 		async setup(password = "correct-horse-battery") {
 			const res = await instance.request("POST", "/api/setup", { password });
@@ -99,12 +135,13 @@ export function useApp(): TestApp {
 	return current;
 }
 
-export function setupApp(): void {
+export function setupApp(env?: Record<string, string>): void {
 	beforeEach(() => {
 		resetRateLimits();
-		current = createTestApp();
+		current = createTestApp(env);
 	});
 	afterEach(() => {
+		if (current) rmSync(current.tempDir, { recursive: true, force: true });
 		current = null;
 	});
 }

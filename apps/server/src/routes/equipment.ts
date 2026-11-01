@@ -11,6 +11,7 @@ import {
 import { asc, eq } from "drizzle-orm";
 import type { Hono } from "hono";
 import type { ServerConfig } from "../config";
+import { deleteStoredFile } from "../http/uploads";
 import { parse } from "../http/validation";
 import {
 	applyReading,
@@ -22,6 +23,7 @@ import {
 	updateEquipment,
 } from "../services/equipment";
 import { createEvent, listEvents } from "../services/events";
+import { attachmentsForEvents, storedFilesForEquipment } from "../services/files";
 import { readSettings } from "../services/settings";
 import {
 	computeTaskStatus,
@@ -59,6 +61,10 @@ export function registerEquipmentRoutes(
 	});
 
 	app.delete("/api/equipment/:id", (c) => {
+		// Remove all owned upload files from disk before the FK cascade drops rows.
+		for (const name of storedFilesForEquipment(db, c.req.param("id"))) {
+			deleteStoredFile(config.dataDir, name);
+		}
 		deleteEquipment(db, c.req.param("id"));
 		return c.json({ ok: true });
 	});
@@ -105,11 +111,17 @@ export function registerEquipmentRoutes(
 	});
 
 	// Event history (newest service date first), optional ?taskId= filter.
+	// Each event carries its attachments for inline display.
 	app.get("/api/equipment/:id/events", (c) => {
 		const equipmentId = c.req.param("id");
 		getEquipmentRow(db, equipmentId);
 		const taskId = c.req.query("taskId");
-		return c.json(listEvents(db, equipmentId, taskId ?? undefined).map(toEventDto));
+		const events = listEvents(db, equipmentId, taskId ?? undefined).map(toEventDto);
+		const attachments = attachmentsForEvents(
+			db,
+			events.map((e) => e.id),
+		);
+		return c.json(events.map((e) => ({ ...e, attachments: attachments.get(e.id) ?? [] })));
 	});
 
 	app.post("/api/equipment/:id/events", async (c) => {

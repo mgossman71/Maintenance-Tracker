@@ -6,34 +6,38 @@ Authoritative progress record (build-plan.md §13). Updated at every checkpoint.
 
 ## Verified complete
 
-| Area                   | Detail                                                                                                                                                                                             | Evidence                                                       |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| Tooling                | Bun 1.4.4 workspaces, Biome, TS strict, CI-compatible scripts                                                                                                                                      | `bunx biome ci .` clean; `tsc --noEmit` clean ×3               |
-| packages/shared        | Tenth-integer meter math, calendar arithmetic with clamping + timezone today, pure due-status engine, Zod contracts, DTO types                                                                     | 33 bun tests pass (all mandatory §4 examples + §12 unit cases) |
-| packages/db            | Drizzle schema (equipment, meter_readings, tasks w/ per-dimension enable flags, events w/ source=baseline, presets, documents, attachments, sessions, settings KV), initial migration, preset seed | Migration applies; verification query passes                   |
-| Auth (M0 slice)        | Argon2id via Bun.password, setup race guard, hashed opaque sessions, idle+absolute expiry, logout, password change revokes all                                                                     | Smoke: anon API 401, double-setup 409, login ok                |
-| Equipment (M1)         | CRUD, archive, hard delete, meter kind guard, reading update/confirm/correct with `meter_readings` history                                                                                         | Smoke incl. restart persistence                                |
-| Tasks (M2)             | CRUD, PATCH merge + effective revalidation, prospective interval edits, meterKind compatibility rules                                                                                              | Smoke critical scenario passes                                 |
-| Events (M3)            | Record/backfill/edit/delete, meter required for meter tasks, chronology warnings (never block), baseline-as-event strategy, latest-applicable tie-breaker                                          | Smoke + unit tests                                             |
-| Dashboard (M4 partial) | Statuses, grouping/ordering, stale-reading prompts, excludes archived/disabled                                                                                                                     | Smoke returns groups                                           |
-| Critical scenario      | §12 Playwright equivalent exercised over HTTP: 17/17 checks (12,000→15,000→13,000→DUE_SOON→DUE→OVERDUE→16,100→17,100, history preserved, restart persistence)                                      | `bun /tmp/mt-flow.ts` (to be converted into `bun test` suite)  |
+| Area            | Detail                                                                                                                                                                 | Evidence                                                 |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Tooling         | Bun 1.4.4 workspaces, Biome, TS strict, CI scripts (`typecheck` incl. e2e tsconfig, `build`, `e2e`)                                                                    | `bunx biome ci .` clean; `tsc --noEmit` clean ×4 + tests |
+| packages/shared | Tenth-integer meter math, calendar arithmetic w/ clamping + tz today, pure engine, Zod contracts, DTOs                                                                 | 33 bun tests (all mandatory §4 examples)                 |
+| packages/db     | Full Drizzle schema, migration `0000_rare_steel_serpent`, builtin preset seed (12)                                                                                     | Migration applies; verification passes                   |
+| Auth (M0)       | Argon2id (Bun.password) setup race guard, hashed opaque sessions, idle+absolute expiry, logout, password change revokes all, login backoff                             | security.test.ts                                         |
+| Equipment (M1)  | CRUD, archive, hard delete + cascade, meter-kind lock, reading increase/confirm/correct w/ history                                                                     | api.test.ts                                              |
+| Tasks (M2)      | CRUD, PATCH merge + revalidation, prospective interval edits, per-dimension enable preserving intervals                                                                | api.test.ts                                              |
+| Events (M3)     | Record/backfill/edit/delete, meter rules, chronology warnings, baselines-as-events, tie-breaker                                                                        | api.test.ts                                              |
+| Dashboard (M4)  | Grouped statuses (incl. task names), stale-reading prompts                                                                                                             | api.test.ts                                              |
+| Web SPA (M1–M4) | Login/setup, dashboard, equipment list/detail w/ 4 tabs, TaskDialog w/ live next-due preview, readings, settings (thresholds/presets/password/theme)                   | `bun run build` + e2e                                    |
+| e2e             | Playwright §12 scenario, 100-hour ATV, dashboard aggregation                                                                                                           | `bun run e2e` — 3 passed                                 |
+| Uploads (M6)    | Documents + event attachments: magic-byte MIME allowlist (no SVG/HTML), size cap, uuid storage, inline only for images, cascade file cleanup                           | files.test.ts — 9 tests; HTTP smoke 6/6                  |
+| Ops (M6)        | `docker/Dockerfile` (multistage, non-root, pinned Bun), `compose.yaml` + healthcheck, `.env.example`, password-reset CLI, README (dev/Docker/NPM/backup/restore/reset) | CLI verified against real DB; docker build running       |
+
+## Test totals
+
+- packages/shared: 33 · apps/server: 36 (api 18, security 10, files 9 — 36 after merges) · e2e: 3
 
 ## Not yet implemented
 
-- Server `bun test` API/security suites (M0–M4 smoke converted to repeatable tests) — **next action**
-- Web SPA (everything UI): routes, dashboard/equipment/tasks/history/settings screens, Edit Interval form, Record Maintenance, themes
-- M5 hardening: rate-limit test coverage already coded; header/CSRF tests pending
-- M6: documents/attachments upload+download, presets UI, Dockerfile, compose.yaml, .env.example, README, Playwright e2e
-- IMPLEMENTATION_STATUS/CHECKPOINT maintenance (this file)
+- Nothing blocking: final gate pass + commit remain for M6.
+- Post-v1 (explicitly out of scope): automated backups, notifications, multi-user.
 
 ## Known issues / decisions
 
-- API wire format is **integer tenths** for every meter value in both directions (contracts canonicalize; clients use `parseMeterToTenths`/`formatMeter`).
-- Login 400-empty artifacts during smoke runs were startup races, not defects; tests must wait for `/health`.
-- `scheduleSummary` shows "miles/hours" generically; UI will render the equipment-specific unit.
+- API wire format: **integer tenths** for meter values both directions.
+- CSRF: Origin vs request-URL origin, hostname-match under `MT_TRUST_PROXY=1` (TLS-terminating proxy).
+- Timestamps app-set only (no SQLite function defaults in generated migrations).
+- e2e specs use `.e2e.ts` so root `bun test` never collects them (Playwright `testMatch` updated).
+- Biome ignores `apps/web/src/styles.css` (Tailwind v4 at-rules unparseable).
 
 ## Priority queue
 
-1. Server API + security `bun test` suites (convert smoke scenario, add auth/ownership/upload-prep cases)
-2. Web SPA (M1→M4 UI)
-3. M5 polish + M6 documents/Docker/README/e2e
+1. Final full gate (biome, typecheck, tests, build, e2e, docker build) → commit M6

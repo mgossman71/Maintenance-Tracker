@@ -12,7 +12,7 @@
 	},
 	"scripts": {
 		"dev": "bun run --parallel --filter './apps/*' dev",
-		"typecheck": "bun run --filter '*' typecheck",
+		"typecheck": "bun run --filter '*' typecheck && tsc -p tests",
 		"build": "bun run --filter '@mt/web' build",
 		"test": "bun test",
 		"e2e": "playwright test",

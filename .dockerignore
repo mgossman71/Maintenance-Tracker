@@ -4,3 +4,11 @@ data
 .env
 .env.*
 .DS_Store
+node_modules
+**/node_modules
+dist
+**/dist
+coverage
+test-results
+playwright-report
+apps/web/dist

@@ -278,6 +278,7 @@ export interface EventDto {
 	createdAt: string;
 	updatedAt: string;
 	attachmentCount?: number;
+	attachments?: AttachmentDto[];
 }
 
 export interface PresetDto {
@@ -297,6 +298,24 @@ export interface SettingsDto {
 	warnHours: number;
 	warnDays: number;
 	staleReadingDays: number;
+}
+
+export interface DocumentDto {
+	id: string;
+	equipmentId: string;
+	filename: string;
+	mimeType: string;
+	byteLength: number;
+	createdAt: string;
+}
+
+export interface AttachmentDto {
+	id: string;
+	eventId: string;
+	filename: string;
+	mimeType: string;
+	byteLength: number;
+	createdAt: string;
 }
 
 /** Engine output as computed server-side for one task. */

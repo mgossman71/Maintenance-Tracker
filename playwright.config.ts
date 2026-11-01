@@ -3,6 +3,8 @@ import { defineConfig, devices } from "@playwright/test";
 /** E2E runs against the production build served by the app server itself. */
 export default defineConfig({
 	testDir: "./tests/e2e",
+	// .e2e.ts extension keeps these out of `bun test` (which grabs *.spec.ts).
+	testMatch: "**/*.e2e.ts",
 	timeout: 60_000,
 	forbidOnly: true,
 	retries: 0,

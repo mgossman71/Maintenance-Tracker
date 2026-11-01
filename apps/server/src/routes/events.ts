@@ -2,14 +2,16 @@ import type { AppDatabase } from "@mt/db";
 import { eventUpdateInput } from "@mt/shared";
 import type { Hono } from "hono";
 import type { ServerConfig } from "../config";
+import { deleteStoredFile } from "../http/uploads";
 import { parse } from "../http/validation";
 import { deleteEvent, updateEvent } from "../services/events";
+import { storedFilesForEvent } from "../services/files";
 import type { AppVariables } from "../types";
 
 export function registerEventRoutes(
 	app: Hono<AppVariables>,
 	db: AppDatabase,
-	_config: ServerConfig,
+	config: ServerConfig,
 ): void {
 	app.patch("/api/events/:id", async (c) => {
 		const input = parse(eventUpdateInput, await c.req.json().catch(() => null));
@@ -18,6 +20,10 @@ export function registerEventRoutes(
 	});
 
 	app.delete("/api/events/:id", (c) => {
+		// Remove attachment files from disk before the FK cascade drops rows.
+		for (const name of storedFilesForEvent(db, c.req.param("id"))) {
+			deleteStoredFile(config.dataDir, name);
+		}
 		deleteEvent(db, c.req.param("id"));
 		return c.json({ ok: true });
 	});
