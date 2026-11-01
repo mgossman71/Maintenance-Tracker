@@ -1,14 +1,6 @@
 .git
 data
-dist
-node_modules
-**/node_modules
-**/dist
-coverage
-playwright-report
-test-results
 .github
 .env
 .env.*
 .DS_Store
-bun-debug.log*

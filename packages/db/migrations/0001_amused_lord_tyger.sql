@@ -1,1 +1,0 @@
-ALTER TABLE `equipment` ADD `year` integer;
