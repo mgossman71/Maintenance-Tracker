@@ -1,7 +1,18 @@
-import type { EquipmentDto, EventDto } from "@mt/shared";
+import type { EquipmentDto, EventDto, FuelSummary } from "@mt/shared";
 import { formatGallons, formatMeter, parseMeterToTenths } from "@mt/shared";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { ChevronRight, FileText, Fuel, Pencil, Plus, Upload, Wrench } from "lucide-react";
+import {
+	ChevronRight,
+	FileText,
+	Fuel,
+	Minus,
+	Pencil,
+	Plus,
+	TrendingDown,
+	TrendingUp,
+	Upload,
+	Wrench,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { ConfirmDialog, RecordServiceDialog } from "../components/dialogs";
 import { FuelDialog, type FuelEntry } from "../components/fuel-dialog";
@@ -754,6 +765,8 @@ function FuelTab({ equipment }: { equipment: EquipmentDto }) {
 						/>
 					</div>
 
+					<TrendRow summary={summary} />
+
 					<div className="grid gap-2">
 						{entries.map((entry) => (
 							<Card key={entry.id}>
@@ -814,6 +827,62 @@ function FuelTab({ equipment }: { equipment: EquipmentDto }) {
 					onClose={() => setDialog({ open: false, entry: null })}
 				/>
 			)}
+		</div>
+	);
+}
+
+/**
+ * Compact trend strip: recent MPG direction vs the earlier average, plus the
+ * best and worst single intervals. Engine decides when it's computable
+ * (4+ intervals) so the baseline never overlaps the recent window.
+ */
+function TrendRow({ summary }: { summary: FuelSummary }) {
+	const delta = summary.trendDeltaTenths;
+	const oneDecimal = (tenths: number) => (tenths / 10).toFixed(1);
+
+	let trend: React.ReactNode;
+	if (!summary.trendComputable || delta === null) {
+		trend = (
+			<span className="text-muted-foreground">Log a few more fill-ups to see the MPG trend.</span>
+		);
+	} else if (delta > 0) {
+		trend = (
+			<span className="flex items-center gap-1 text-success">
+				<TrendingUp className="size-4 shrink-0" aria-hidden="true" />
+				{oneDecimal(delta)} vs earlier
+			</span>
+		);
+	} else if (delta < 0) {
+		trend = (
+			<span className="flex items-center gap-1 text-destructive">
+				<TrendingDown className="size-4 shrink-0" aria-hidden="true" />
+				{oneDecimal(Math.abs(delta))} vs earlier
+			</span>
+		);
+	} else {
+		trend = (
+			<span className="flex items-center gap-1 text-muted-foreground">
+				<Minus className="size-4 shrink-0" aria-hidden="true" />
+				Holding steady vs earlier
+			</span>
+		);
+	}
+
+	return (
+		<div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+			{trend}
+			{summary.bestMpg ? (
+				<span className="text-muted-foreground">
+					Best {oneDecimal(summary.bestMpg.mpgTenths)} mpg
+					<span className="whitespace-nowrap"> ({formatDate(summary.bestMpg.loggedAt)})</span>
+				</span>
+			) : null}
+			{summary.worstMpg ? (
+				<span className="text-muted-foreground">
+					Worst {oneDecimal(summary.worstMpg.mpgTenths)} mpg
+					<span className="whitespace-nowrap"> ({formatDate(summary.worstMpg.loggedAt)})</span>
+				</span>
+			) : null}
 		</div>
 	);
 }

@@ -91,4 +91,104 @@ describe("computeFuelEconomy", () => {
 		expect(summary.avgPricePerGallonCents).toBe(300);
 		expect(summary.blendedMpgTenths).toBe(200); // blend ignores pricing
 	});
+
+	test("a priced baseline counts toward cost totals", () => {
+		const { summary } = computeFuelEconomy([s("a", 0, 10, 300), s("b", 100, 5)]);
+		// 10 gal x $3.00 = $30.00 even though the baseline gallons are not
+		// attributed to any distance.
+		expect(summary.totalCostCents).toBe(3000);
+		expect(summary.avgPricePerGallonCents).toBe(300);
+	});
+});
+
+describe("fuel trend + best/worst", () => {
+	// helper: intervals with given mpg values need Δ/gal pairs producing them
+	test("fewer than 4 intervals: no trend, best/worst still shown", () => {
+		const { summary } = computeFuelEconomy([
+			s("a", 0, 1),
+			s("b", 100, 5), // 20.0
+			s("c", 200, 10), // 10.0
+		]);
+		expect(summary.trendComputable).toBe(false);
+		expect(summary.trendDeltaTenths).toBeNull();
+		expect(summary.bestMpg).toEqual({ mpgTenths: 200, loggedAt: "2026-01-01" });
+		expect(summary.worstMpg).toEqual({ mpgTenths: 100, loggedAt: "2026-01-01" });
+	});
+
+	test("exactly 4 intervals: last 3 vs the single earlier one", () => {
+		// mpg: 20.0, 16.7, 20.0, 14.3
+		const { summary } = computeFuelEconomy([
+			s("base", 0, 1),
+			s("i1", 100, 5), // 200
+			s("i2", 200, 6), // 167
+			s("i3", 300, 5), // 200
+			s("i4", 400, 7), // 143
+		]);
+		expect(summary.trendComputable).toBe(true);
+		// recent avg (167+200+143)/3 = 170; earlier avg 200 -> -30
+		expect(summary.trendDeltaTenths).toBe(-30);
+		expect(summary.bestMpg?.mpgTenths).toBe(200); // first occurrence wins ties
+		expect(summary.worstMpg?.mpgTenths).toBe(143);
+	});
+
+	test("steady MPG yields a zero (neutral) trend", () => {
+		const { summary } = computeFuelEconomy([
+			s("base", 0, 1),
+			s("i1", 100, 5),
+			s("i2", 200, 5),
+			s("i3", 300, 5),
+			s("i4", 400, 5),
+		]);
+		expect(summary.trendDeltaTenths).toBe(0);
+	});
+
+	test("improving trend is positive", () => {
+		// mpg: 10.0 then 20.0 x3
+		const { summary } = computeFuelEconomy([
+			s("base", 0, 1),
+			s("i1", 100, 10), // 100
+			s("i2", 200, 5), // 200
+			s("i3", 300, 5), // 200
+			s("i4", 400, 5), // 200
+		]);
+		expect(summary.trendDeltaTenths).toBe(100);
+	});
+
+	test("non-computable intervals (duplicate odometers) are skipped", () => {
+		const dup = s("dup", 100, 6, 300); // same odometer as i1 -> no distance
+		dup.loggedAt = "2026-02-02";
+		const { summary } = computeFuelEconomy([
+			s("base", 0, 1),
+			s("i1", 100, 5), // 200
+			dup, // duplicate odometer -> no mpg
+			s("i2", 200, 4), // 100 mi / 4 gal = 250
+			s("i3", 300, 5), // 200
+			s("i4", 400, 10), // 100
+		]);
+		// intervals: 200, 250, 200, 100 -> last 3 avg = 183, earlier = 200
+		expect(summary.trendComputable).toBe(true);
+		expect(summary.trendDeltaTenths).toBe(-17);
+		expect(summary.bestMpg?.mpgTenths).toBe(250);
+		expect(summary.worstMpg?.mpgTenths).toBe(100);
+	});
+
+	test("best/worst carry the fill-up date, null MPG entries ignored", () => {
+		const best = s("best", 200, 2); // 100 mi / 2 gal = 50.0
+		best.loggedAt = "2026-05-04";
+		const { summary } = computeFuelEconomy([
+			s("base", 0, 1),
+			s("i1", 100, 5), // 20.0
+			best,
+			s("dup", 200, 4), // duplicate odometer -> no mpg
+		]);
+		expect(summary.bestMpg).toEqual({ mpgTenths: 500, loggedAt: "2026-05-04" });
+		expect(summary.worstMpg).toEqual({ mpgTenths: 200, loggedAt: "2026-01-01" });
+	});
+
+	test("no MPG at all: best/worst null", () => {
+		const { summary } = computeFuelEconomy([s("a", 1000, 10)]);
+		expect(summary.bestMpg).toBeNull();
+		expect(summary.worstMpg).toBeNull();
+		expect(summary.trendComputable).toBe(false);
+	});
 });

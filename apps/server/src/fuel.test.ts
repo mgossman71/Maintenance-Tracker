@@ -206,6 +206,35 @@ test("fuel: economy summary math over three fill-ups", async () => {
 	expect(r.data.entries[2].mpgTenths).toBe(100); // 100 mi / 10 gal
 });
 
+test("fuel: trend + best/worst flow through the economy DTO", async () => {
+	const t = useApp();
+	await t.setup();
+	const truckId = await createTruck(t, 2000);
+
+	const fillUps: Array<[number, string]> = [
+		[1000, "1"],
+		[1100, "5"], // 20.0
+		[1200, "6"], // 16.7
+		[1300, "5"], // 20.0
+		[1400, "7"], // 14.3
+	];
+	for (const [miles, gallons] of fillUps) {
+		const r = await addFillUp(t, truckId, {
+			loggedAt: "2026-01-01",
+			odometer: T(miles),
+			gallons,
+		});
+		expect(r.status).toBe(201);
+	}
+
+	const r = await t.request("GET", `/api/equipment/${truckId}/fuel`);
+	expect(r.status).toBe(200);
+	expect(r.data.summary.trendComputable).toBe(true);
+	expect(r.data.summary.trendDeltaTenths).toBe(-30); // last 3 avg 17.0 vs 20.0
+	expect(r.data.summary.bestMpg.mpgTenths).toBe(200);
+	expect(r.data.summary.worstMpg.mpgTenths).toBe(143);
+});
+
 test("fuel: fill-ups never change the equipment reading", async () => {
 	const t = useApp();
 	await t.setup();

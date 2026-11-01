@@ -189,7 +189,7 @@ test("fuel economy: fill-ups compute MPG; tab hidden on hours equipment", async 
 	await page.getByRole("tab", { name: "Fuel" }).click();
 	await expect(page.getByText("No fill-ups yet")).toBeVisible();
 
-	// First fill-up at the prefilled odometer: 10 gal @ $3.00.
+	// Baseline fill-up at the prefilled odometer: 10 gal @ $3.00.
 	await page.getByRole("button", { name: "Log your first fill-up" }).click();
 	let dlg = page.getByRole("dialog", { name: "Add fill-up" });
 	await expect(dlg.getByLabel("Odometer (miles)")).toHaveValue("13100");
@@ -198,27 +198,41 @@ test("fuel economy: fill-ups compute MPG; tab hidden on hours equipment", async 
 	await dlg.getByRole("button", { name: "Add fill-up" }).click();
 	await expect(dlg).toBeHidden();
 
-	// Second fill-up 300 miles later, 15 gal, unpriced.
-	await page.getByRole("button", { name: "Add fill-up" }).first().click();
-	dlg = page.getByRole("dialog", { name: "Add fill-up" });
-	await dlg.getByLabel("Odometer (miles)").fill("13400");
-	await dlg.getByLabel("Gallons").fill("15");
-	await dlg.getByRole("button", { name: "Add fill-up" }).click();
-	await expect(dlg).toBeHidden();
+	// Four intervals (100 mi each) with MPG 20.0, 16.7, 20.0, 14.3.
+	for (const [odo, gal] of [
+		["13200", "5"],
+		["13300", "6"],
+		["13400", "5"],
+		["13500", "7"],
+	] as const) {
+		await page.getByRole("button", { name: "Add fill-up" }).first().click();
+		dlg = page.getByRole("dialog", { name: "Add fill-up" });
+		await dlg.getByLabel("Odometer (miles)").fill(odo);
+		await dlg.getByLabel("Gallons").fill(gal);
+		await dlg.getByRole("button", { name: "Add fill-up" }).click();
+		await expect(dlg).toBeHidden();
+	}
 
-	// 300 mi / 15 gal = 20.0 mpg on the row badge and the summary cards.
 	await expect(page.getByText("20.0 mpg").first()).toBeVisible();
 	await expect(page.getByText("Last MPG")).toBeVisible();
 	await expect(page.getByText("Blended MPG")).toBeVisible();
 	// Priced fill-ups only: 10 gal x $3.00 = $30.00 (row + total).
 	await expect(page.getByText("$30.00").first()).toBeVisible();
 
-	// Delete the newest fill-up: MPG disappears, leaving only the baseline.
+	// Trend row: last-3 avg 17.0 vs earlier 20.0 -> down 3.0; best/worst.
+	await expect(page.getByText(/3\.0 vs earlier/)).toBeVisible();
+	await expect(page.getByText("Best 20.0 mpg").first()).toBeVisible();
+	await expect(page.getByText("Worst 14.3 mpg").first()).toBeVisible();
+
+	// Delete the newest fill-up: with only 3 intervals left the trend
+	// falls back to the "log more" message and 14.3 disappears entirely.
 	await page
 		.getByRole("button", { name: /Delete fill-up from/ })
 		.first()
 		.click();
-	await expect(page.getByText("20.0 mpg")).toHaveCount(0);
+	await expect(page.getByText("14.3 mpg")).toHaveCount(0);
+	await expect(page.getByText(/few more fill-ups/)).toBeVisible();
+	await expect(page.getByText("Worst 16.7 mpg").first()).toBeVisible();
 
 	// Hours-based equipment has no Fuel tab at all.
 	await page.getByRole("link", { name: "Equipment" }).first().click();
@@ -234,18 +248,19 @@ test("fuel page: quick fill-up from the nav, no equipment detour", async ({ page
 	await expect(page.getByText("F-150").first()).toBeVisible();
 	await expect(page.getByText("Raptor ATV")).toHaveCount(0);
 
-	// Quick add straight from the card (state from earlier tests: one
-	// baseline fill-up at 13,100 mi, odometer at 13,100).
+	// Quick add straight from the card (state from earlier tests: fill-ups
+	// through 13,400 mi, odometer at 13,100, one priced at $30.00).
 	await page.getByRole("button", { name: "Add fill-up for F-150" }).click();
 	const dlg = page.getByRole("dialog", { name: "Add fill-up" });
 	await expect(dlg.getByLabel("Odometer (miles)")).toHaveValue("13100");
-	await dlg.getByLabel("Odometer (miles)").fill("13400");
+	await dlg.getByLabel("Odometer (miles)").fill("13600");
 	await dlg.getByLabel("Gallons").fill("14");
 	await dlg.getByLabel(/Price per gallon/).fill("3.25");
 	await dlg.getByRole("button", { name: "Add fill-up" }).click();
 	await expect(dlg).toBeHidden();
 
-	// Card stats recalculate live: 300 mi / 14 gal = 21.4; cost $45.50.
-	await expect(page.getByText("21.4").first()).toBeVisible();
-	await expect(page.getByText("$45.50").first()).toBeVisible();
+	// Card stats recalculate live: 200 mi / 14 gal = 14.3 Last MPG; total
+	// cost $30.00 + 14 x $3.25 = $75.50.
+	await expect(page.getByText("14.3").first()).toBeVisible();
+	await expect(page.getByText("$75.50").first()).toBeVisible();
 });

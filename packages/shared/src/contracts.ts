@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isCalendarDate } from "./dates";
+import type { FuelSummary } from "./fuel";
 import { CALENDAR_UNITS, METER_KINDS } from "./types";
 
 /**
@@ -433,13 +434,5 @@ export interface FuelLogDto {
 
 export interface FuelEconomyDto {
 	entries: Array<FuelLogDto & { distanceTenths: number | null; mpgTenths: number | null }>;
-	summary: {
-		logCount: number;
-		distanceTenths: number | null;
-		gallonsHundredths: number;
-		blendedMpgTenths: number | null;
-		lastMpgTenths: number | null;
-		totalCostCents: number | null;
-		avgPricePerGallonCents: number | null;
-	};
+	summary: FuelSummary;
 }

@@ -78,6 +78,10 @@ hour meters). Log every fill-up — date, odometer reading, gallons, and an
 
 - **Summary cards**: last MPG (most recent interval), blended MPG (whole
   log), total fuel cost with average price, and distance covered.
+- **Trend row**: your last three fill-up intervals vs the average of all
+  earlier ones — ▲ up / ▼ down / holding steady — plus the best and worst
+  single intervals and their dates. Needs at least four intervals with
+  computable MPG so the baseline never overlaps what it's compared to.
 - **Fill-up list**, newest first, each row showing odometer, gallons,
   price, cost, and an MPG badge when the interval is computable. **Edit**
   or **Delete** any row.

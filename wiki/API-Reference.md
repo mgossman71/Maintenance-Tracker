@@ -115,10 +115,15 @@ updatedAt, attachments[]`.
 `FuelLogDto`: `id, equipmentId, loggedAt, odometer(tenths),
 gallonsHundredths, pricePerGallonCents, totalCostCents, createdAt,
 updatedAt`. `FuelEconomyDto.summary`: `logCount, distanceTenths,
-gallonsHundredths, blendedMpgTenths, lastMpgTenths, totalCostCents,
+gallonsHundredths, blendedMpgTenths, lastMpgTenths, bestMpg, worstMpg,
+trendComputable, trendDeltaTenths, totalCostCents,
 avgPricePerGallonCents` — all units integer: tenths of miles, hundredths of
 a gallon, tenths of MPG, cents. Blended MPG = odometer spread over gallons
-of every fill-up after the first; cost fields cover priced fill-ups only.
+of every fill-up after the first; `bestMpg`/`worstMpg` are
+`{ mpgTenths, loggedAt }` over computable intervals; `trendDeltaTenths` =
+average MPG of the last 3 intervals minus the average of all earlier ones
+(`trendComputable` only from 4+ intervals). Cost fields cover priced
+fill-ups (the baseline's price included — it's money spent).
 
 ## Tasks (standalone)
 
