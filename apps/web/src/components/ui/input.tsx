@@ -6,7 +6,8 @@ export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInp
 	return (
 		<input
 			className={cn(
-				"flex h-9 w-full rounded-lg border border-border bg-card px-3 py-1 text-sm shadow-sm outline-none placeholder:text-muted-foreground focus:border-primary disabled:opacity-50",
+				// text-base (<640px) keeps iOS Safari from auto-zooming on focus.
+				"flex h-9 w-full rounded-lg border border-border bg-card px-3 py-1 text-base shadow-sm outline-none placeholder:text-muted-foreground focus:border-primary disabled:opacity-50 sm:text-sm",
 				className,
 			)}
 			{...props}
@@ -21,7 +22,7 @@ export function Textarea({
 	return (
 		<textarea
 			className={cn(
-				"flex min-h-16 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-sm outline-none placeholder:text-muted-foreground focus:border-primary",
+				"flex min-h-16 w-full rounded-lg border border-border bg-card px-3 py-2 text-base shadow-sm outline-none placeholder:text-muted-foreground focus:border-primary sm:text-sm",
 				className,
 			)}
 			{...props}

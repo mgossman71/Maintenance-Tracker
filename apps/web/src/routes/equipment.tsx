@@ -299,7 +299,7 @@ function TasksTab({ equipment }: { equipment: EquipmentDto }) {
 									<p className="mt-1 text-xs text-warning">{status.explanation}</p>
 								) : null}
 							</div>
-							<div className="flex shrink-0 flex-wrap gap-1.5">
+							<div className="flex flex-wrap gap-1.5 sm:shrink-0 lg:justify-end">
 								<Button size="sm" disabled={!task.enabled} onClick={() => setRecordTask(task.id)}>
 									Record maintenance
 								</Button>

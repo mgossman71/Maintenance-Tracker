@@ -53,12 +53,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 	};
 
 	return (
-		<div className="min-h-dvh pb-16 md:pb-0">
+		<div className="min-h-dvh pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
 			<header className="sticky top-0 z-30 border-b border-border bg-background/90 backdrop-blur">
-				<div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
-					<Link to="/" className="flex items-center gap-2 font-semibold">
-						<Gauge className="size-5 text-primary" />
-						Maintenance Tracker
+				<div className="mx-auto flex max-w-4xl items-center justify-between gap-2 px-4 py-3">
+					<Link to="/" className="flex min-w-0 items-center gap-2 font-semibold [&>span]:truncate">
+						<Gauge className="size-5 shrink-0 text-primary" />
+						<span>Maintenance Tracker</span>
 					</Link>
 					<div className="flex items-center gap-1 text-sm">
 						<button
@@ -103,7 +103,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 					Settings
 				</Link>
 			</div>
-			<nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card md:hidden">
+			<nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card pb-[env(safe-area-inset-bottom)] md:hidden">
 				<div className="grid grid-cols-3 text-xs">
 					<NavLink to="/" label="Dashboard" icon={<LayoutDashboard className="size-5" />} />
 					<NavLink to="/equipment" label="Equipment" icon={<Wrench className="size-5" />} />
