@@ -8,6 +8,76 @@ import { Dialog, DialogContent, DialogFooter } from "./ui/dialog";
 import { Field, Input, Textarea } from "./ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
+/** Quick "update odometer / hour meter" from the dashboard. */
+export function UpdateReadingDialog({
+	open,
+	onClose,
+	equipment,
+}: {
+	open: boolean;
+	onClose: () => void;
+	equipment: { id: string; name: string; meterKind: string; currentMeter: number | null };
+}) {
+	const unit = equipment.meterKind === "hours" ? "hours" : "miles";
+	const [value, setValue] = useState(() =>
+		equipment.currentMeter !== null ? formatMeter(equipment.currentMeter) : "",
+	);
+	const tenths = value.trim() === "" ? null : parseMeterToTenths(value);
+	const unchanged =
+		equipment.currentMeter !== null && tenths !== null && tenths === equipment.currentMeter;
+	const save = useWrite(
+		() =>
+			api.post(`/api/equipment/${equipment.id}/reading`, {
+				mode: unchanged ? "confirm" : "increase",
+				...(unchanged ? {} : { value: tenths }),
+			}),
+		{ onDone: () => onClose() },
+	);
+
+	return (
+		<Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+			<DialogContent title={`Update ${equipment.name}`}>
+				<form
+					className="grid gap-4"
+					onSubmit={(e) => {
+						e.preventDefault();
+						save.mutate();
+					}}
+				>
+					<Field
+						label={`Current ${unit}`}
+						hint={
+							unchanged
+								? "Unchanged — saving confirms the reading is still accurate."
+								: "Decreases are rejected here; fix mistakes from the equipment Info tab."
+						}
+					>
+						<Input
+							inputMode="decimal"
+							autoFocus
+							value={value}
+							onChange={(e) => setValue(e.target.value)}
+						/>
+					</Field>
+					{save.error ? (
+						<Alert variant="error">
+							{save.error instanceof ApiClientError ? save.error.message : "Could not save."}
+						</Alert>
+					) : null}
+					<DialogFooter>
+						<Button type="button" variant="ghost" onClick={onClose}>
+							Cancel
+						</Button>
+						<Button type="submit" disabled={save.isPending || tenths === null}>
+							{save.isPending ? "Saving…" : unchanged ? "Confirm reading" : "Save"}
+						</Button>
+					</DialogFooter>
+				</form>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
 /** Record (or backfill) a service event; meter required for meter-based tasks. */
 export function RecordServiceDialog({
 	open,

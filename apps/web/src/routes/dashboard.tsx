@@ -1,8 +1,8 @@
 import type { DashboardGroup } from "@mt/shared";
 import { useNavigate } from "@tanstack/react-router";
-import { AlertTriangle, Plus } from "lucide-react";
+import { AlertTriangle, Gauge, Plus } from "lucide-react";
 import { useState } from "react";
-import { RecordServiceDialog } from "../components/dialogs";
+import { RecordServiceDialog, UpdateReadingDialog } from "../components/dialogs";
 import { Button } from "../components/ui/button";
 import { Alert, Badge, Card, CardContent } from "../components/ui/card";
 import {
@@ -19,6 +19,7 @@ export function DashboardPage() {
 	const equipment = useEquipment();
 	const navigate = useNavigate();
 	const [recordFor, setRecordFor] = useState<RecordTarget | null>(null);
+	const [readingFor, setReadingFor] = useState<ReadingTarget | null>(null);
 
 	if (dashboard.isPending) return <p className="text-muted-foreground">Loading dashboard…</p>;
 	if (dashboard.error)
@@ -78,7 +79,12 @@ export function DashboardPage() {
 			{allClear && <p className="text-muted-foreground">Everything is up to date. Nice work.</p>}
 
 			{groups.map((group) => (
-				<GroupSection key={group.status} group={group} onRecord={(item) => setRecordFor(item)} />
+				<GroupSection
+					key={group.status}
+					group={group}
+					onRecord={(item) => setRecordFor(item)}
+					onUpdateReading={(item) => setReadingFor(item)}
+				/>
 			))}
 
 			{recordFor && (
@@ -91,6 +97,9 @@ export function DashboardPage() {
 					meterKind={recordFor.meterKind}
 				/>
 			)}
+			{readingFor && (
+				<UpdateReadingDialog open onClose={() => setReadingFor(null)} equipment={readingFor} />
+			)}
 		</div>
 	);
 }
@@ -102,12 +111,21 @@ type RecordTarget = {
 	meterKind: string;
 };
 
+type ReadingTarget = {
+	id: string;
+	name: string;
+	meterKind: string;
+	currentMeter: number | null;
+};
+
 function GroupSection({
 	group,
 	onRecord,
+	onUpdateReading,
 }: {
 	group: DashboardGroup;
 	onRecord: (target: RecordTarget) => void;
+	onUpdateReading: (target: ReadingTarget) => void;
 }) {
 	const items = group.items;
 	if (items.length === 0) return null;
@@ -161,21 +179,39 @@ function GroupSection({
 									<p className="mt-0.5 text-xs text-warning">{item.explanation}</p>
 								) : null}
 							</div>
-							<Button
-								size="sm"
-								variant="outline"
-								onClick={() =>
-									onRecord({
-										equipmentId: item.equipmentId,
-										taskId: item.taskId,
-										currentMeter: item.currentMeter,
-										meterKind: item.meterKind,
-									})
-								}
-								className="shrink-0"
-							>
-								Record service
-							</Button>
+							<div className="flex shrink-0 gap-2">
+								{item.meterKind !== "none" && (
+									<Button
+										size="sm"
+										variant="outline"
+										aria-label={`Update reading for ${item.equipmentName}`}
+										onClick={() =>
+											onUpdateReading({
+												id: item.equipmentId,
+												name: item.equipmentName,
+												meterKind: item.meterKind,
+												currentMeter: item.currentMeter,
+											})
+										}
+									>
+										<Gauge /> Update reading
+									</Button>
+								)}
+								<Button
+									size="sm"
+									variant="outline"
+									onClick={() =>
+										onRecord({
+											equipmentId: item.equipmentId,
+											taskId: item.taskId,
+											currentMeter: item.currentMeter,
+											meterKind: item.meterKind,
+										})
+									}
+								>
+									Record service
+								</Button>
+							</div>
 						</CardContent>
 					</Card>
 				))}

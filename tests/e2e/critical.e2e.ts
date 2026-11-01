@@ -158,3 +158,25 @@ test("dashboard aggregates statuses", async ({ page }) => {
 	// From the previous tests: Oil Change (OK at 16,100/17,100) and ATV Oil (DUE_SOON).
 	await expect(page.getByText("ATV Oil").first()).toBeVisible();
 });
+
+test("dashboard: quick mileage update from a task row", async ({ page }) => {
+	await login(page);
+	await page.goto("/");
+	// ATV Oil is DUE_SOON (145h of 150h). Bump the hour meter to 149h from the
+	// dashboard row — still due-soon, but proves the quick update lands + recalcs.
+	await page.getByRole("button", { name: "Update reading for Raptor ATV" }).click();
+	const dialog = page.getByRole("dialog", { name: "Update Raptor ATV" });
+	await expect(dialog.getByLabel("Current hours")).toHaveValue("145");
+	await dialog.getByLabel("Current hours").fill("149");
+	await dialog.getByRole("button", { name: "Save" }).click();
+	await expect(dialog).toBeHidden();
+	// Dashboard refreshes: 149/150 leaves ~1h, still Due soon, now nearer.
+	await expect(page.getByText("ATV Oil").first()).toBeVisible();
+	await expect(page.getByText("Due soon").first()).toBeVisible();
+	await expect(page.getByText(/1 h left/).first()).toBeVisible();
+	// Reopen: the saved value persisted.
+	await page.getByRole("button", { name: "Update reading for Raptor ATV" }).click();
+	await expect(
+		page.getByRole("dialog", { name: "Update Raptor ATV" }).getByLabel("Current hours"),
+	).toHaveValue("149");
+});
