@@ -377,3 +377,69 @@ export interface ReadingUpdateResult {
 	meterVerifiedAt: string;
 	warning: string | null;
 }
+
+// --- Fuel logs ---------------------------------------------------------------
+
+/** Gallons arrive as string|number, canonically parsed to hundredths. */
+const zGallons = z
+	.union([z.string(), z.number()])
+	.superRefine((value, ctx) => {
+		if (/^\d+(\.\d{1,2})?$/.test(String(value).trim()) && Number.parseFloat(String(value)) > 0)
+			return;
+		ctx.addIssue({
+			code: "custom",
+			message: "Enter gallons as a positive number (max 2 decimals)",
+		});
+	})
+	.transform((value) => {
+		const n = Math.round(Number.parseFloat(String(value).trim()) * 100);
+		return Number.isFinite(n) ? n : 0;
+	});
+
+const zPricePerGallonCents = z.coerce.number().int().min(1).max(100_000).optional().nullable();
+
+const fuelLogBase = {
+	loggedAt: zCalendarDate,
+	odometer: zTenthsNonNegative(),
+	gallons: zGallons,
+	pricePerGallonCents: zPricePerGallonCents,
+};
+
+export const fuelLogCreateInput = z.object(fuelLogBase).superRefine((value, ctx) => {
+	if (value.odometer == null) {
+		ctx.addIssue({ code: "custom", message: "Odometer reading is required", path: ["odometer"] });
+	}
+});
+
+export const fuelLogUpdateInput = z.object({
+	loggedAt: zCalendarDate.optional(),
+	// Odometer is NOT NULL, so an explicit null is rejected; omitted = unchanged.
+	odometer: zTenthsNonNegative().refine((v) => v !== null, "Odometer reading is required"),
+	gallons: zGallons.optional(),
+	pricePerGallonCents: zPricePerGallonCents,
+});
+
+export interface FuelLogDto {
+	id: string;
+	equipmentId: string;
+	loggedAt: string;
+	odometer: number; // tenths of miles
+	gallonsHundredths: number;
+	pricePerGallonCents: number | null;
+	totalCostCents: number | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface FuelEconomyDto {
+	entries: Array<FuelLogDto & { distanceTenths: number | null; mpgTenths: number | null }>;
+	summary: {
+		logCount: number;
+		distanceTenths: number | null;
+		gallonsHundredths: number;
+		blendedMpgTenths: number | null;
+		lastMpgTenths: number | null;
+		totalCostCents: number | null;
+		avgPricePerGallonCents: number | null;
+	};
+}

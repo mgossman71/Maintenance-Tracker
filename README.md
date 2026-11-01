@@ -19,6 +19,8 @@ One password protects everything; no accounts, no cloud, no telemetry.
   on one dashboard. Warning thresholds are configurable.
 - **History** — every service with date, meter, cost, parts, notes, photos.
   Backfill old records freely; corrections never destroy data.
+- **Fuel economy** — log fill-ups (odometer + gallons, price optional) on
+  mile-based equipment; get per-interval and blended MPG plus fuel cost totals.
 - **Documents** — manuals and receipts per equipment item.
 - **Security** — Argon2id password, hashed server-side sessions, CSRF and
   clickjacking protections, strict CSP, authenticated file storage.

@@ -4,6 +4,7 @@ import type {
 	DocumentDto,
 	EquipmentDto,
 	EventDto,
+	FuelEconomyDto,
 	PresetDto,
 	SessionDto,
 	SettingsDto,
@@ -83,6 +84,14 @@ export function useDocuments(equipmentId: string) {
 	return useQuery({
 		queryKey: ["documents", equipmentId],
 		queryFn: () => api.get<DocumentDto[]>(`/api/equipment/${equipmentId}/documents`),
+		enabled: Boolean(equipmentId),
+	});
+}
+
+export function useFuel(equipmentId: string) {
+	return useQuery({
+		queryKey: ["fuel", equipmentId],
+		queryFn: () => api.get<FuelEconomyDto>(`/api/equipment/${equipmentId}/fuel`),
 		enabled: Boolean(equipmentId),
 	});
 }

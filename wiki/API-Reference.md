@@ -103,6 +103,23 @@ an audit-trail row.
 performedOn, meter, notes, serviceProvider, costCents, partsUsed, createdAt,
 updatedAt, attachments[]`.
 
+### Fuel logs (mile-based equipment only)
+
+| Method   | Path                      | Notes                                                                                                                                                                                    |
+| -------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/equipment/:id/fuel` | → `FuelEconomyDto` — entries odometer-ascending with per-interval `mpgTenths`/`distanceTenths`, plus `summary`. `400` for hours/none equipment.                                          |
+| `POST`   | `/api/equipment/:id/fuel` | `{ loggedAt, odometer(tenths), gallons("12.75"), pricePerGallonCents? }` → `201 FuelLogDto`. Odometers far above the current reading are rejected; fill-ups never change `currentMeter`. |
+| `PATCH`  | `/api/fuel/:id`           | Partial update; `pricePerGallonCents: null` clears the price. Omitted keys stay unchanged.                                                                                               |
+| `DELETE` | `/api/fuel/:id`           | Removes the fill-up; economy recalculates.                                                                                                                                               |
+
+`FuelLogDto`: `id, equipmentId, loggedAt, odometer(tenths),
+gallonsHundredths, pricePerGallonCents, totalCostCents, createdAt,
+updatedAt`. `FuelEconomyDto.summary`: `logCount, distanceTenths,
+gallonsHundredths, blendedMpgTenths, lastMpgTenths, totalCostCents,
+avgPricePerGallonCents` — all units integer: tenths of miles, hundredths of
+a gallon, tenths of MPG, cents. Blended MPG = odometer spread over gallons
+of every fill-up after the first; cost fields cover priced fill-ups only.
+
 ## Tasks (standalone)
 
 | Method   | Path             | Notes                                                                                                                                                                                                                                                 |

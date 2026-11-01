@@ -180,3 +180,48 @@ test("dashboard: quick mileage update from a task row", async ({ page }) => {
 		page.getByRole("dialog", { name: "Update Raptor ATV" }).getByLabel("Current hours"),
 	).toHaveValue("149");
 });
+
+test("fuel economy: fill-ups compute MPG; tab hidden on hours equipment", async ({ page }) => {
+	await login(page);
+	await page.getByRole("link", { name: "Equipment" }).first().click();
+	await page.getByText("F-150").first().click();
+
+	await page.getByRole("tab", { name: "Fuel" }).click();
+	await expect(page.getByText("No fill-ups yet")).toBeVisible();
+
+	// First fill-up at the prefilled odometer: 10 gal @ $3.00.
+	await page.getByRole("button", { name: "Log your first fill-up" }).click();
+	let dlg = page.getByRole("dialog", { name: "Add fill-up" });
+	await expect(dlg.getByLabel("Odometer (miles)")).toHaveValue("13100");
+	await dlg.getByLabel("Gallons").fill("10");
+	await dlg.getByLabel(/Price per gallon/).fill("3");
+	await dlg.getByRole("button", { name: "Add fill-up" }).click();
+	await expect(dlg).toBeHidden();
+
+	// Second fill-up 300 miles later, 15 gal, unpriced.
+	await page.getByRole("button", { name: "Add fill-up" }).first().click();
+	dlg = page.getByRole("dialog", { name: "Add fill-up" });
+	await dlg.getByLabel("Odometer (miles)").fill("13400");
+	await dlg.getByLabel("Gallons").fill("15");
+	await dlg.getByRole("button", { name: "Add fill-up" }).click();
+	await expect(dlg).toBeHidden();
+
+	// 300 mi / 15 gal = 20.0 mpg on the row badge and the summary cards.
+	await expect(page.getByText("20.0 mpg").first()).toBeVisible();
+	await expect(page.getByText("Last MPG")).toBeVisible();
+	await expect(page.getByText("Blended MPG")).toBeVisible();
+	// Priced fill-ups only: 10 gal x $3.00 = $30.00 (row + total).
+	await expect(page.getByText("$30.00").first()).toBeVisible();
+
+	// Delete the newest fill-up: MPG disappears, leaving only the baseline.
+	await page
+		.getByRole("button", { name: /Delete fill-up from/ })
+		.first()
+		.click();
+	await expect(page.getByText("20.0 mpg")).toHaveCount(0);
+
+	// Hours-based equipment has no Fuel tab at all.
+	await page.getByRole("link", { name: "Equipment" }).first().click();
+	await page.getByText("Raptor ATV").first().click();
+	await expect(page.getByRole("tab", { name: "Fuel" })).toHaveCount(0);
+});

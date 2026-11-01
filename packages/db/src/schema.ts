@@ -163,6 +163,28 @@ export const appSettings = sqliteTable("app_settings", {
 	updatedAt: text("updated_at").notNull(),
 });
 
+/**
+ * Fill-up log for fuel economy (miles-based equipment only).
+ * odometer: integer tenths of miles (like every meter column).
+ * gallonsHundredths: pump volume to two decimals (12.75 gal -> 1275).
+ * pricePerGallonCents: optional.
+ */
+export const fuelLogs = sqliteTable(
+	"fuel_logs",
+	{
+		id: text("id").primaryKey(),
+		equipmentId: text("equipment_id")
+			.notNull()
+			.references(() => equipment.id, { onDelete: "cascade" }),
+		loggedAt: text("logged_at").notNull(), // YYYY-MM-DD purchase date
+		odometer: integer("odometer").notNull(), // tenths
+		gallonsHundredths: integer("gallons_hundredths").notNull(),
+		pricePerGallonCents: integer("price_per_gallon_cents"),
+		...timestamps,
+	},
+	(t) => [index("fuel_logs_equipment_idx").on(t.equipmentId, t.loggedAt)],
+);
+
 export type EquipmentRow = typeof equipment.$inferSelect;
 export type MeterReadingRow = typeof meterReadings.$inferSelect;
 export type MaintenanceTaskRow = typeof maintenanceTasks.$inferSelect;
@@ -172,3 +194,4 @@ export type EquipmentDocumentRow = typeof equipmentDocuments.$inferSelect;
 export type EventAttachmentRow = typeof eventAttachments.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type AppSettingRow = typeof appSettings.$inferSelect;
+export type FuelLogRow = typeof fuelLogs.$inferSelect;

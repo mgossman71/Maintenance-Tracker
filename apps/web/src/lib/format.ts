@@ -32,7 +32,8 @@ export function formatDate(iso: string | null): string {
 
 export function formatMoney(cents: number | null): string {
 	if (cents === null) return "—";
-	return cents.toLocaleString(undefined, { style: "currency", currency: "USD" });
+	// toLocaleString's currency style expects major units: cents -> dollars.
+	return (cents / 100).toLocaleString(undefined, { style: "currency", currency: "USD" });
 }
 
 export const STATUS_LABEL: Record<string, string> = {

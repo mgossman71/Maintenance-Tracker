@@ -1,7 +1,7 @@
-import type { EquipmentDto, EventDto } from "@mt/shared";
-import { formatMeter, parseMeterToTenths } from "@mt/shared";
+import type { EquipmentDto, EventDto, FuelLogDto } from "@mt/shared";
+import { formatGallons, formatMeter, parseMeterToTenths, todayLocalDate } from "@mt/shared";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { ChevronRight, FileText, Pencil, Plus, Upload, Wrench } from "lucide-react";
+import { ChevronRight, FileText, Fuel, Pencil, Plus, Upload, Wrench } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ConfirmDialog, RecordServiceDialog } from "../components/dialogs";
 import { TaskDialog } from "../components/task-dialog";
@@ -30,6 +30,7 @@ import {
 	useEquipment,
 	useEquipmentDetail,
 	useEvents,
+	useFuel,
 	useSettings,
 	useTasks,
 	useWrite,
@@ -199,6 +200,7 @@ export function EquipmentDetailPage() {
 				<TabsList>
 					<TabsTrigger value="tasks">Tasks</TabsTrigger>
 					<TabsTrigger value="history">History</TabsTrigger>
+					{equipment.meterKind === "miles" && <TabsTrigger value="fuel">Fuel</TabsTrigger>}
 					<TabsTrigger value="documents">Documents</TabsTrigger>
 					<TabsTrigger value="info">Info</TabsTrigger>
 				</TabsList>
@@ -208,6 +210,11 @@ export function EquipmentDetailPage() {
 				<TabsContent value="history">
 					<HistoryTab equipment={equipment} />
 				</TabsContent>
+				{equipment.meterKind === "miles" && (
+					<TabsContent value="fuel">
+						<FuelTab equipment={equipment} />
+					</TabsContent>
+				)}
 				<TabsContent value="documents">
 					<DocumentsTab equipment={equipment} />
 				</TabsContent>
@@ -662,6 +669,278 @@ function DocumentsTab({ equipment }: { equipment: EquipmentDto }) {
 				</Card>
 			))}
 		</div>
+	);
+}
+
+// --- Fuel tab ---------------------------------------------------------------
+
+type FuelEntry = FuelLogDto & { distanceTenths: number | null; mpgTenths: number | null };
+
+function FuelTab({ equipment }: { equipment: EquipmentDto }) {
+	const fuel = useFuel(equipment.id);
+	const remove = useWrite((id: string) => api.delete(`/api/fuel/${id}`));
+	const [dialog, setDialog] = useState<{ open: boolean; entry: FuelEntry | null }>({
+		open: false,
+		entry: null,
+	});
+
+	if (fuel.isPending) return <p className="text-muted-foreground">Loading fuel log…</p>;
+	if (fuel.error)
+		return (
+			<p className="text-sm text-destructive">
+				{fuel.error instanceof ApiClientError ? fuel.error.message : "Could not load fuel data."}
+			</p>
+		);
+
+	const data = fuel.data;
+	const summary = data.summary;
+	// Entries arrive odometer-ascending; newest fill-up first for display.
+	const entries = [...data.entries].reverse();
+
+	return (
+		<div className="grid gap-4">
+			<div className="flex items-center justify-between gap-2">
+				<p className="text-sm text-muted-foreground">
+					Track mileage and fuel costs at every fill-up.
+				</p>
+				<Button size="sm" onClick={() => setDialog({ open: true, entry: null })}>
+					<Plus /> Add fill-up
+				</Button>
+			</div>
+
+			{entries.length === 0 ? (
+				<Card>
+					<CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+						<Fuel className="size-8 text-muted-foreground" />
+						<p className="text-muted-foreground">
+							No fill-ups yet. Log your odometer and gallons at the pump to see MPG here.
+						</p>
+						<Button size="sm" onClick={() => setDialog({ open: true, entry: null })}>
+							<Plus /> Log your first fill-up
+						</Button>
+					</CardContent>
+				</Card>
+			) : (
+				<>
+					<div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+						<SummaryCard
+							label="Last MPG"
+							value={
+								summary.lastMpgTenths !== null ? `${(summary.lastMpgTenths / 10).toFixed(1)}` : "—"
+							}
+							hint="most recent interval"
+						/>
+						<SummaryCard
+							label="Blended MPG"
+							value={
+								summary.blendedMpgTenths !== null
+									? `${(summary.blendedMpgTenths / 10).toFixed(1)}`
+									: "—"
+							}
+							hint="whole log"
+						/>
+						<SummaryCard
+							label="Fuel cost"
+							value={formatMoney(summary.totalCostCents)}
+							hint={
+								summary.avgPricePerGallonCents !== null
+									? `${formatMoney(summary.avgPricePerGallonCents)}/gal avg`
+									: "priced fill-ups only"
+							}
+						/>
+						<SummaryCard
+							label="Distance"
+							value={formatMeterWithUnit(summary.distanceTenths, "miles")}
+							hint={`${entries.length} fill-up${entries.length === 1 ? "" : "s"}`}
+						/>
+					</div>
+
+					<div className="grid gap-2">
+						{entries.map((entry) => (
+							<Card key={entry.id}>
+								<CardContent className="flex flex-wrap items-center justify-between gap-3">
+									<div className="min-w-0">
+										<p className="flex flex-wrap items-center gap-2 text-sm font-medium">
+											{formatDate(entry.loggedAt)}
+											{entry.mpgTenths !== null ? (
+												<Badge variant="neutral">{(entry.mpgTenths / 10).toFixed(1)} mpg</Badge>
+											) : null}
+										</p>
+										<p className="text-xs text-muted-foreground">
+											{formatMeterWithUnit(entry.odometer, "miles")}
+											{" · "}
+											{formatGallons(entry.gallonsHundredths)} gal
+											{entry.pricePerGallonCents !== null
+												? ` · ${formatMoney(entry.pricePerGallonCents)}/gal`
+												: ""}
+											{entry.totalCostCents !== null
+												? ` · ${formatMoney(entry.totalCostCents)}`
+												: ""}
+										</p>
+									</div>
+									<div className="flex shrink-0 gap-1">
+										<Button
+											size="sm"
+											variant="ghost"
+											aria-label={`Edit fill-up from ${formatDate(entry.loggedAt)}`}
+											onClick={() => setDialog({ open: true, entry })}
+										>
+											<Pencil />
+										</Button>
+										<Button
+											size="sm"
+											variant="ghost"
+											aria-label={`Delete fill-up from ${formatDate(entry.loggedAt)}`}
+											onClick={() => remove.mutate(entry.id)}
+										>
+											Delete
+										</Button>
+									</div>
+								</CardContent>
+							</Card>
+						))}
+					</div>
+					<p className="text-xs text-muted-foreground">
+						MPG compares each fill-up's odometer to the previous one; price is optional and cost
+						totals cover priced fill-ups only.
+					</p>
+				</>
+			)}
+
+			{dialog.open && (
+				<FuelDialog
+					open
+					equipment={equipment}
+					entry={dialog.entry}
+					onClose={() => setDialog({ open: false, entry: null })}
+				/>
+			)}
+		</div>
+	);
+}
+
+function SummaryCard({ label, value, hint }: { label: string; value: string; hint: string }) {
+	return (
+		<Card>
+			<CardContent className="py-3">
+				<p className="text-xs text-muted-foreground">{label}</p>
+				<p className="text-lg font-semibold">{value}</p>
+				<p className="truncate text-xs text-muted-foreground">{hint}</p>
+			</CardContent>
+		</Card>
+	);
+}
+
+/** Dollars-per-gallon text -> integer cents (pump's 3rd decimal rounds). */
+function parsePriceCents(input: string): number | null | undefined {
+	const str = input.trim();
+	if (str === "") return null;
+	const dollars = Number.parseFloat(str);
+	if (!Number.isFinite(dollars) || dollars <= 0 || dollars > 1000) return undefined;
+	return Math.round(dollars * 100);
+}
+
+function FuelDialog({
+	open,
+	onClose,
+	equipment,
+	entry,
+}: {
+	open: boolean;
+	onClose: () => void;
+	equipment: EquipmentDto;
+	entry: FuelEntry | null;
+}) {
+	const [loggedAt, setLoggedAt] = useState(entry?.loggedAt ?? todayLocalDate());
+	const [odometer, setOdometer] = useState(() =>
+		entry
+			? formatMeter(entry.odometer)
+			: equipment.currentMeter !== null
+				? formatMeter(equipment.currentMeter)
+				: "",
+	);
+	const [gallons, setGallons] = useState(entry ? formatGallons(entry.gallonsHundredths) : "");
+	const [price, setPrice] = useState(
+		entry?.pricePerGallonCents != null
+			? (entry.pricePerGallonCents / 100).toFixed(2).replace(/\.00$/, "")
+			: "",
+	);
+
+	const priceCents = parsePriceCents(price);
+	const odometerTenths = odometer.trim() === "" ? null : parseMeterToTenths(odometer);
+	const canSubmit = odometerTenths !== null && gallons.trim() !== "" && priceCents !== undefined;
+
+	const save = useWrite(
+		() =>
+			entry
+				? api.patch(`/api/fuel/${entry.id}`, {
+						loggedAt,
+						odometer: odometerTenths,
+						gallons,
+						pricePerGallonCents: priceCents,
+					})
+				: api.post(`/api/equipment/${equipment.id}/fuel`, {
+						loggedAt,
+						odometer: odometerTenths,
+						gallons,
+						pricePerGallonCents: priceCents,
+					}),
+		{ onDone: () => onClose() },
+	);
+
+	return (
+		<Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+			<DialogContent title={entry ? "Edit fill-up" : "Add fill-up"}>
+				<form
+					className="grid gap-4"
+					onSubmit={(e) => {
+						e.preventDefault();
+						if (canSubmit) save.mutate();
+					}}
+				>
+					<Field label="Date">
+						<Input type="date" value={loggedAt} onChange={(e) => setLoggedAt(e.target.value)} />
+					</Field>
+					<Field label="Odometer (miles)" hint="Reading on the pump when you finished.">
+						<Input
+							inputMode="decimal"
+							autoFocus={!entry}
+							value={odometer}
+							onChange={(e) => setOdometer(e.target.value)}
+						/>
+					</Field>
+					<Field label="Gallons">
+						<Input
+							inputMode="decimal"
+							placeholder="12.75"
+							value={gallons}
+							onChange={(e) => setGallons(e.target.value)}
+						/>
+					</Field>
+					<Field label="Price per gallon ($)" hint="Optional — needed for fuel cost totals.">
+						<Input
+							inputMode="decimal"
+							placeholder="3.50"
+							value={price}
+							onChange={(e) => setPrice(e.target.value)}
+						/>
+					</Field>
+					{save.error ? (
+						<p className="text-sm text-destructive">
+							{save.error instanceof ApiClientError ? save.error.message : "Could not save."}
+						</p>
+					) : null}
+					<DialogFooter>
+						<Button type="button" variant="ghost" onClick={onClose}>
+							Cancel
+						</Button>
+						<Button type="submit" disabled={save.isPending || !canSubmit}>
+							{save.isPending ? "Saving…" : entry ? "Save" : "Add fill-up"}
+						</Button>
+					</DialogFooter>
+				</form>
+			</DialogContent>
+		</Dialog>
 	);
 }
 

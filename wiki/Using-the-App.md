@@ -61,6 +61,26 @@ thumbnails (click to view full-size; PDFs download).
 - **Edit** fixes any field (recalculation happens automatically); **Delete**
   warns that due dates will be recalculated from the remaining history.
 
+## Equipment detail — Fuel tab
+
+Shown only for **mile-based** equipment (fuel economy isn't meaningful for
+hour meters). Log every fill-up — date, odometer reading, gallons, and an
+**optional** price per gallon — and the tab computes the rest.
+
+- **Summary cards**: last MPG (most recent interval), blended MPG (whole
+  log), total fuel cost with average price, and distance covered.
+- **Fill-up list**, newest first, each row showing odometer, gallons,
+  price, cost, and an MPG badge when the interval is computable. **Edit**
+  or **Delete** any row.
+- MPG compares each fill-up's odometer to the previous one — so the first
+  fill-up only sets the baseline and shows no MPG. Duplicate or lower
+  odometers simply produce no MPG instead of corrupting the math.
+- Cost totals count **priced** fill-ups only; unpriced ones still drive
+  MPG. Fill-ups never change the equipment's current reading — keep that
+  current with the dashboard or Info tab.
+- Odometers wildly above the current reading are rejected as fat-finger
+  protection; backdated (lower) fill-ups are fine.
+
 ## Equipment detail — Documents tab
 
 Upload manuals, receipts, photos: **PNG, JPEG, GIF, WebP, PDF** (checked by
