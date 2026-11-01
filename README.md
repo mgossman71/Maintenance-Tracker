@@ -28,6 +28,12 @@ One password protects everything; no accounts, no cloud, no telemetry.
 Bun 1.4.4 · Hono · Drizzle + SQLite (WAL) · React 19 + Tailwind 4 SPA served by
 the same process · Playwright e2e. One container, one volume.
 
+## Documentation
+
+The full manual lives in [`wiki/`](wiki/) — start at
+[`wiki/Home.md`](wiki/Home.md). (Those pages are GitHub-wiki-formatted; push
+them to the repository wiki with one command if you prefer it hosted there.)
+
 ---
 
 ## Local development
