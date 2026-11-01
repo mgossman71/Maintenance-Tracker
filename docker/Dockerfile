@@ -25,16 +25,17 @@ ENV NODE_ENV=production \
     MT_DATA_DIR=/data \
     MT_WEB_DIST=/app/apps/web/dist
 
+# Service account first (own layer = cached forever). Only /data must be
+# writable at runtime (SQLite + uploads); app code stays root-owned read-only,
+# so there is no chown -R of node_modules on every rebuild.
+RUN useradd --system --uid 10001 --user-group mtuser && mkdir -p /data && chown mtuser:mtuser /data
+USER mtuser
+
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json /app/bun.lock ./
 COPY --from=build /app/apps/server ./apps/server
 COPY --from=build /app/apps/web/dist ./apps/web/dist
 COPY --from=build /app/packages ./packages
-
-RUN useradd --system --uid 10001 mtuser \
-    && mkdir -p /data \
-    && chown -R mtuser:mtuser /data /app
-USER mtuser
 
 EXPOSE 3000
 VOLUME ["/data"]
