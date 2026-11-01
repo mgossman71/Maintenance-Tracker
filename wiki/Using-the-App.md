@@ -5,16 +5,20 @@ A screen-by-screen guide. The concepts behind everything here are in
 
 ## Dashboard
 
-The landing page — every active task across all unarchived equipment,
-grouped by urgency: **Overdue → Due now → Due soon → Needs baseline → OK.**
-Empty groups are hidden.
+The landing page — **one card per vehicle or piece of equipment**, with all
+of its tracked tasks inside. Cards sort by urgency: a vehicle shows up as
+soon as anything on it is **Overdue**, then Due now, Due soon, Needs
+baseline, and all-OK equipment settles at the bottom. Equipment with no
+tasks still gets a card (marked _Untracked_) so nothing is invisible here.
 
-Each row: **equipment · task · status badge · schedule summary**
-("Next: 16,100 mi · 3,000 mi to go") and a **Record maintenance** button
-that opens the service dialog with this equipment and task pre-selected.
+Each card: **name (link), worst-status badge, current reading**, then one
+row per task — **task · status badge · schedule summary** ("Next: 16,100
+mi · 3,000 mi to go") with a **Record service** button that opens the
+service dialog with that task pre-selected. Cards containing overdue work
+get a red border so problems pop out at a glance.
 
-A **stale readings** banner lists equipment whose meter hasn't been verified
-recently — open those items and update or confirm the reading.
+One **Update reading** button per card opens the quick odometer/hour
+dialog; if the reading looks stale, the card says so inline.
 
 ## Equipment list
 

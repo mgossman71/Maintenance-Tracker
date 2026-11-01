@@ -264,3 +264,23 @@ test("fuel page: quick fill-up from the nav, no equipment detour", async ({ page
 	await expect(page.getByText("14.3").first()).toBeVisible();
 	await expect(page.getByText("$75.50").first()).toBeVisible();
 });
+
+test("dashboard: one card per vehicle holding all of its tasks", async ({ page }) => {
+	await login(page);
+	await page.goto("/");
+	// Exactly two vehicles -> exactly two cards.
+	await expect(page.locator("[data-vehicle]")).toHaveCount(2);
+	// Each task lives inside its own vehicle's card.
+	const truckCard = page.locator("[data-vehicle]", { hasText: "F-150" });
+	const atvCard = page.locator("[data-vehicle]", { hasText: "Raptor ATV" });
+	await expect(truckCard.getByText("Oil Change")).toBeVisible();
+	await expect(atvCard.getByText("ATV Oil")).toBeVisible();
+	// Card ordering follows urgency: Due-soon ATV (149/150 h) beats OK truck.
+	await expect(page.locator("[data-vehicle]").first()).toContainText("Raptor ATV");
+	// One reading control per vehicle, not per task.
+	await expect(page.getByRole("button", { name: /Update reading for/ })).toHaveCount(2);
+	// Per-task action scoping: the truck card offers its own service row.
+	await truckCard.getByRole("button", { name: "Record service for Oil Change" }).click();
+	await expect(page.getByRole("dialog", { name: "Record maintenance" })).toBeVisible();
+	await page.keyboard.press("Escape");
+});

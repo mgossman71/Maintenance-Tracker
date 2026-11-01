@@ -15,8 +15,9 @@ One password protects everything; no accounts, no cloud, no telemetry.
   hour meters, or calendar-only.
 - **Tasks** — “Oil Change every 5,000 miles or 12 months.” Change an interval
   any time: recalculation is prospective and never rewrites history.
-- **Status** — OK / Due soon / Due now / Overdue / Needs baseline, per task,
-  on one dashboard. Warning thresholds are configurable.
+- **Status** — OK / Due soon / Due now / Overdue / Needs baseline per task,
+  inside one card per vehicle on the dashboard. Warning thresholds are
+  configurable.
 - **History** — every service with date, meter, cost, parts, notes, photos.
   Backfill old records freely; corrections never destroy data.
 - **Fuel economy** — a dedicated Fuel page (plus a per-vehicle tab) for

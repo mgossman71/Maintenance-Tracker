@@ -40,23 +40,25 @@ are looking at it.
 ## UI tour
 
 - **Top bar** — app name (→ Dashboard), nav links: **Dashboard**, **Equipment**,
-  **Settings**; a theme toggle (auto/light/dark); **Log out**. Collapses to a
-  menu on small screens.
-- **Dashboard** — every active task grouped by urgency (Overdue → Due now →
-  Due soon → Needs baseline → OK), each row showing equipment · task · status
-  · a one-line schedule summary ("next due 16,100 mi · in 3,000 mi"). A
-  **stale readings** section lists equipment whose meter hasn't been verified
-  in a while. **Record maintenance** on any row opens the service dialog
-  pre-filled for that task.
+  **Fuel**, **Settings**; a theme toggle (auto/light/dark); **Log out**.
+  Collapses to a bottom tab bar on small screens.
+- **Dashboard** — one card per vehicle with all of its tasks inside; cards
+  sort by urgency (anything Overdue first, all-OK equipment last). Each task
+  row shows status · a one-line schedule summary ("next due 16,100 mi · in
+  3,000 mi") and a **Record service** button opening the service dialog
+  pre-filled for that task. One **Update reading** button per card; stale
+  readings are flagged inline on the card.
 - **Equipment list** (`/equipment`) — searchable, with archive filter and an
   **Add equipment** button. Categories group items (Truck, Car, Lawn… whatever
   you type).
-- **Equipment detail** — four tabs:
+- **Equipment detail** — tabs:
   - **Tasks** — each task with status badge, next-due line, and actions
     (_Record maintenance_, _Edit interval_, edit, disable/enable, delete).
     **New task** opens a dialog with a live next-due preview.
   - **History** — all service events newest-first, filterable by task, with
     photos/costs/parts and edit & delete.
+  - **Fuel** (mile-based equipment only) — fill-up log with MPG badges, trend
+    row, and cost totals.
   - **Documents** — upload manuals/receipts/photos (PNG, JPEG, GIF, WebP,
     PDF), preview, download, delete.
   - **Info** — edit metadata, current-reading panel with **Update reading** /
