@@ -1,0 +1,19 @@
+{
+	"name": "@mt/db",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit",
+		"db:generate": "drizzle-kit generate"
+	},
+	"dependencies": {
+		"drizzle-orm": "^0.45.1"
+	},
+	"devDependencies": {
+		"drizzle-kit": "^0.31.8",
+		"typescript": "^5.9.3"
+	}
+}

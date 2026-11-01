@@ -1,0 +1,11 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"types": ["bun"],
+		"paths": {
+			"@mt/shared": ["../shared/src/index.ts"],
+			"@mt/db": ["../db/src/index.ts"]
+		}
+	},
+	"include": ["src"]
+}

@@ -12,6 +12,7 @@ Build a responsive, password-protected web application for scheduling, recording
 **Central rule:** A recurring maintenance task is performed every **X miles, X operating hours, and/or X calendar interval**. The user controls each interval and can change it at any time. The application records when work actually happened and calculates the next thresholds from the latest applicable service record or explicit starting baseline. For combined schedules, service is due when **either** threshold is reached.
 
 ### Non-negotiable outcomes
+
 - Add, edit, archive, and delete equipment with confirmation and clearly described consequences.
 - Track current odometer/hour readings and the date they were verified.
 - Add, edit, disable, and delete task schedules independently for each equipment item.
@@ -23,28 +24,30 @@ Build a responsive, password-protected web application for scheduling, recording
 - Deliver and verify the full UI → API → database → calculation → UI workflow.
 
 ### Explicit v1 non-goals
+
 - Multi-user roles and accounts, VIN lookup, automatic OEM schedules, telematics/OBD integration, automatic parts purchasing, push/email/SMS notifications, native mobile apps, cloud sync, and automatic GitHub backup uploads.
 - Do not add AI features to the maintenance tracker.
 - Never imply preset intervals represent manufacturer-approved service schedules; user verifies intervals.
 
 ## 2. Locked architecture
 
-| Layer | Technology | Notes |
-|---|---|---|
-| Runtime and package manager | Bun, exact version pinned | One monorepo and reproducible lockfile |
-| API | Hono + Zod | Typed endpoints, validation at boundaries |
-| Database | SQLite + Drizzle ORM | Schema and append-only migrations |
-| Frontend | React + Vite + TypeScript | Single-page application |
-| UI | Tailwind CSS + shadcn/ui | Accessible forms and dialog components |
-| Client state | TanStack Query + TanStack Router | Query invalidation after writes |
-| Shared business logic | `packages/shared` | One pure due-status engine, shared schemas |
-| Auth | Argon2id + server-side sessions | Single master password; authenticated app |
-| Test | Bun test + Playwright | Unit, API, and browser workflow tests |
-| Deployment | Multistage Docker, linux/amd64 | Ubuntu 24.04; TLS termination at reverse proxy |
+| Layer                       | Technology                       | Notes                                          |
+| --------------------------- | -------------------------------- | ---------------------------------------------- |
+| Runtime and package manager | Bun, exact version pinned        | One monorepo and reproducible lockfile         |
+| API                         | Hono + Zod                       | Typed endpoints, validation at boundaries      |
+| Database                    | SQLite + Drizzle ORM             | Schema and append-only migrations              |
+| Frontend                    | React + Vite + TypeScript        | Single-page application                        |
+| UI                          | Tailwind CSS + shadcn/ui         | Accessible forms and dialog components         |
+| Client state                | TanStack Query + TanStack Router | Query invalidation after writes                |
+| Shared business logic       | `packages/shared`                | One pure due-status engine, shared schemas     |
+| Auth                        | Argon2id + server-side sessions  | Single master password; authenticated app      |
+| Test                        | Bun test + Playwright            | Unit, API, and browser workflow tests          |
+| Deployment                  | Multistage Docker, linux/amd64   | Ubuntu 24.04; TLS termination at reverse proxy |
 
 **Deployment:** Develop on macOS, deploy to an Ubuntu 24.04 server using Docker Compose and a persistent named volume or bind mount. Support Nginx Proxy Manager as the primary example, with Caddy as an alternative. API and SPA are served under one origin, avoiding cross-origin credentials and unnecessary CORS.
 
 ### Repository layout
+
 ```text
 maintenance-tracker/
   apps/
@@ -75,7 +78,7 @@ Use simple, explicit modules. Do not add a second API framework, ORM, UI kit, or
 
 - **Equipment:** An owned vehicle, machine, or item.
 - **Meter:** An equipment reading, measured in **miles**, **hours**, or **none**. Hours may use decimals, e.g., 127.5; miles may also support decimal readings if needed. **Representation decision:** store every meter value as integer tenths of its unit (127.5 → `1275`); one decimal place is the maximum supported precision. All threshold arithmetic and the exactly-zero `DUE` comparison happen in integer tenths — never in binary floating-point. Display trims trailing `.0`.
-- **Task preset:** An editable suggestion in the library (e.g., Oil Change). It is *not* a schedule and changing a preset never silently changes existing tasks.
+- **Task preset:** An editable suggestion in the library (e.g., Oil Change). It is _not_ a schedule and changing a preset never silently changes existing tasks.
 - **Maintenance task:** A schedule belonging to one equipment item, with independently editable intervals.
 - **Service event (intervention):** A record of maintenance actually done on a date, optionally with a meter reading, cost, notes, and attachments.
 - **Baseline:** An explicitly entered last-service date/meter, optionally recorded as an initial history event, used to calculate when a task is due. If no credible basis exists, report Needs Baseline.
@@ -83,12 +86,14 @@ Use simple, explicit modules. Do not add a second API framework, ORM, UI kit, or
 - **Due thresholds:** Calculated date and/or meter reading. They are not historical facts and must be recalculated following relevant edits.
 
 ### Equipment meter compatibility
+
 - Equipment with `miles`: mileage and/or calendar schedules, never hour schedules.
 - Equipment with `hours`: operating-hour and/or calendar schedules, never mileage schedules.
 - Equipment with `none`: calendar-only schedules.
 - Equipment meter kind cannot change silently once readings or associated meter-based tasks/history exist. Offer a deliberate, validated conversion/correction process or refuse and explain.
 
 ### Scheduling model
+
 - A recurring task requires at least one enabled interval. Meter and calendar dimensions have **independent enabled flags**; disabling a dimension removes it from due calculation but never erases its configured interval value, so re-enabling restores the previous schedule.
 - Meter interval: **every X miles/hours**, where X is positive and stored in the equipment's meter unit.
 - Calendar interval: **every X days/weeks/months/years**, where X is a positive integer.
@@ -99,6 +104,7 @@ Use simple, explicit modules. Do not add a second API framework, ORM, UI kit, or
 - Archiving equipment preserves history. Hard deletion is a separate destructive action requiring explicit confirmation and documented cascade behavior.
 
 ### Date and time semantics
+
 - Store service dates as local calendar dates (`YYYY-MM-DD`), not UTC timestamps masquerading as calendar dates. Store creation/update audit timestamps in UTC.
 - Use configured application timezone (`TZ`, default `America/Chicago`) to determine today's local date.
 - Adding N days/weeks uses calendar days; N weeks = 7N days.
@@ -110,6 +116,7 @@ Use simple, explicit modules. Do not add a second API framework, ORM, UI kit, or
 Create a **pure, deterministic** function in `packages/shared` that accepts: equipment meter kind, optional current meter value, task intervals and enabled status, latest applicable service/baseline values, current local date, timezone context, and warning thresholds. It returns all known due thresholds, signed remaining amounts, per-dimension states, overall state, and explanation(s).
 
 ### Core formulas
+
 ```text
 next_due_meter = last_service_meter + meter_interval
 next_due_date  = add_calendar_interval(last_service_date, calendar_interval)
@@ -120,6 +127,7 @@ remaining_days  = days_between(today_local, next_due_date)
 Apply each formula only when its input values exist. Never convert unknown to zero. A calendar-only task requires last-service date, not a meter reading. A meter-only task requires a last-service meter but may additionally store date for history. A combined task needs both baselines for complete status evaluation. A null current equipment meter value makes the meter dimension **non-evaluable**: still display the computed next-due threshold, mark that dimension unknown, and apply the NEEDS_BASELINE precedence rule.
 
 ### Status precedence
+
 1. `OVERDUE`: At least one evaluable enabled threshold is **past** (`remaining < 0`).
 2. `DUE`: At least one evaluable enabled threshold is **exactly reached** (`remaining = 0`) and none is overdue.
 3. `DUE_SOON`: At least one evaluable enabled threshold is within its warning range (including the configurable boundary) and none is due/overdue.
@@ -131,9 +139,10 @@ When one dimension is due/overdue and another unknown, report the known urgency 
 
 **Defaults:** Warn within 500 miles, 10 hours, or 30 days. Store warning thresholds in settings; allow task-specific override as an optional later enhancement, not needed to complete v1. Settings also store the **stale-reading prompt threshold** (default: flag equipment whose `meter_verified_at` is older than 30 days) used by Dashboard prompts.
 
-**Terminology:** `DUE` at exactly zero remaining; `OVERDUE` after crossing threshold. Date-only expiry tasks (e.g., registration expiration) are *not* part of recurring scheduling v1; do not conflate them with service intervals. They can be added later as an explicit distinct task type.
+**Terminology:** `DUE` at exactly zero remaining; `OVERDUE` after crossing threshold. Date-only expiry tasks (e.g., registration expiration) are _not_ part of recurring scheduling v1; do not conflate them with service intervals. They can be added later as an explicit distinct task type.
 
 ### Mandatory examples
+
 - Last oil change 10,000 mi, interval 5,000 mi → next at 15,000 mi.
 - Change interval to 3,000 mi → next immediately changes to 13,000 mi; history is unchanged.
 - Current meter 12,600 mi and warning 500 → DUE_SOON for 13,000 mi.
@@ -148,34 +157,43 @@ When one dimension is due/overdue and another unknown, report the known urgency 
 Use stable IDs, foreign keys, indexes, and explicit timestamps. Suggested logical entities (physical column names may vary).
 
 ### `equipment`
+
 `id`, `name`, `category`, `make`, `model`, `year`, `description`, `meter_kind (miles|hours|none)`, `current_meter_value nullable`, `meter_verified_at nullable`, `archived_at nullable`, `created_at`, `updated_at`.
 
 ### `maintenance_tasks`
+
 `id`, `equipment_id`, `name`, `description nullable`, `preset_id nullable`, `enabled`, `meter_enabled`, `calendar_enabled`, `meter_interval nullable`, `calendar_interval_value nullable`, `calendar_interval_unit nullable (days|weeks|months|years)`, `created_at`, `updated_at`.
 
 Validation: an enabled task has at least one enabled dimension whose interval is positive; disabling a dimension never erases its stored interval, so re-enabling restores it unchanged; meter interval allowed only on meter equipment. Uniqueness of names is **not** mandatory.
 
 ### `maintenance_events`
+
 `id`, `equipment_id`, `task_id nullable`, `label`, `source (service|baseline, default service)`, `performed_on (date)`, `meter_value nullable`, `notes nullable`, `service_provider nullable`, `cost_cents nullable`, `parts_used nullable`, `created_at`, `updated_at`.
 
 Allow general unscheduled equipment events with `task_id=null`. Require task association for an event to advance that task's schedule; baseline rows (`source='baseline'`) always carry a task association. Cost stored in integer cents. Ensure event equipment matches associated task equipment.
 
 ### Baselines — decided: no separate table
+
 v1 keeps **no** `task_baselines` table; this is the single baseline strategy, and no parallel baseline source may be added. When creating a task, the user may enter an initial last-service date and/or meter; store it as a `maintenance_events` row with `source='baseline'`, labeled as an initial baseline in the UI and editable like any event. Baseline rows participate in normal latest-applicable-event selection, so the first real service event automatically supersedes them. A task with neither baseline nor event reports NEEDS_BASELINE.
 
 ### `task_presets`
+
 `id`, `name`, `description`, suggested interval fields, `sort_order`, `is_builtin`, `created_at`, `updated_at`.
 
 ### `equipment_documents` / `event_attachments`
+
 `id`, owner foreign key, safe stored name, display filename, sniffed MIME, byte length, created timestamp. Never use user-supplied paths directly.
 
 ### `sessions` and `app_settings`
+
 Store opaque server-side session tokens in hashed form where practical; idle and absolute expiration; password hash and first-run setup status; theme and warning settings. Avoid storing passwords or secret tokens in plaintext.
 
 ### `meter_readings` (reading history — required)
+
 `id`, `equipment_id`, `value` (integer tenths), `mode (increase|confirm|correction)`, `recorded_at`. Every Update Reading, Confirm Same Reading, and Correct Reading action appends a row; equipment `current_meter_value` and `meter_verified_at` mirror the latest accepted entry. Explicit corrections are rows with `mode='correction'` and are never merged into normal increasing readings. Correcting the current reading never rewrites service-event readings.
 
 ### Event ordering and calculations
+
 For each task, choose the **latest applicable event by performed service date**, breaking ties between same-date events in this fixed order: highest meter value, then latest created timestamp, then lexicographically greatest id. A corrected or deleted latest event must recompute the task from the remaining latest event or initial baseline. Never select latest solely by database insertion time. Do not silently accept a service record that violates equipment-meter chronology without validation and an explicit correction path.
 
 ## 6. UI and information architecture
@@ -187,12 +205,15 @@ Mobile-first, responsive, accessible. Light, Dark, Auto themes (Auto default, us
 3. **Settings:** appearance, master password change, task preset library, warning thresholds, about/version information (authenticated).
 
 ### Dashboard
+
 Show overdue first, then due, due soon, unknown baseline, and OK. Show equipment name, task, editable interval summary, last service date and meter (where known), both next due thresholds, signed remaining values, current reading, and urgency explanation. Avoid misleading derived dates based on estimated mileage. Update instantly after a mutation via TanStack Query invalidation.
 
 ### Equipment detail — Tasks tab
+
 Each row includes task name, schedule text, last performed, next due, status, and two prominent actions: **Record Maintenance** and **Edit Interval**. Clicking Edit Interval opens a short form in context, not Settings.
 
 ### Edit Interval form — mandatory
+
 - Editable positive numeric **every X** meter units if equipment has a meter.
 - Editable positive numeric **every X** time units and selection of days, weeks, months, years.
 - Independently enable/disable meter and calendar dimensions; ensure at least one remains.
@@ -202,18 +223,23 @@ Each row includes task name, schedule text, last performed, next due, status, an
 - Permit user to change values repeatedly (e.g., 5,000 → 3,000 → 7,500 miles).
 
 ### Record Maintenance form
+
 Prefill date with today and meter with current equipment reading if available; editable fields include task, date, meter, notes, cost, provider, parts, receipts/photos. Require date and task; meter required when recording service for a meter-based task so its due threshold can be recalculated. For time-only tasks meter is optional. Validate readings without blocking legitimate dated backfills; explain conflicts and offer correction workflow.
 
 ### History tab
+
 Newest service dates first; filter by task; edit/delete with confirmation and proper recalculation. Display individual details and attachments. Show how records link to tasks.
 
 ### Documents tab
+
 Upload/download/view supported equipment documents; protected behind auth; image preview only for validated safe image types. No untrusted HTML execution.
 
 ### Info tab
+
 Name, type, make, model, year, description, meter kind, current meter and last verification. Distinct Update Reading, Confirm Same Reading, and Correct Reading actions.
 
 ### Empty and error states
+
 Useful prompts for no equipment, no tasks, unknown baseline, stale readings, validation issues, unsuccessful saves and expired session. Display actual server errors without revealing secrets.
 
 ## 7. API contract (illustrative paths)
@@ -261,7 +287,7 @@ Every write must validate authorization/session, input values and foreign-key ow
 
 ## 8. Security model: internet-accessible, single user
 
-- First-run page sets one master password; Argon2id salted hash only, enforce a reasonable password minimum. Use Bun's built-in `bun:argon2` (available in pinned Bun 1.4.4); fall back to `@node-rs/argon2` only if the pin ever predates it. Concurrent first-boot setup requests must race against a transactional single-row guard so a password can never be set twice.
+- First-run page sets one master password; Argon2id salted hash only, enforce a reasonable password minimum. Use Bun's built-in `Bun.password` with `algorithm: "argon2id"` (verified in pinned Bun 1.4.4; the separate `bun:argon2` module does not exist there). Concurrent first-boot setup requests must race against a transactional single-row guard so a password can never be set twice.
 - Server-side sessions, random high-entropy IDs, stored hashed where appropriate. Cookie: `__Host-mt_session`, `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/` in HTTPS deployment. Because the `__Host-` prefix requires `Secure`, local HTTP development uses a distinct name (`mt_session_dev`) that must never appear in an HTTPS deployment; never accept insecure cookies over public HTTP.
 - Idle timeout (configurable, default 30 days) plus absolute maximum lifespan; session revocation on logout or password change. The long idle default is a deliberate single-user home-app tradeoff; state it in the README.
 - Login rate-limiting and failure backoff, based on actual client identity only when a known proxy is trusted. Avoid uncontrolled spoofing of `X-Forwarded-*`.
@@ -338,6 +364,7 @@ Set secure proxy/public-origin rules explicitly; do not trust arbitrary forwarde
 ## 12. Test plan and release gates
 
 ### Unit tests (Bun)
+
 - Miles-only, hours-only and calendar-only tasks.
 - Combined meter+calendar with either threshold first; most urgent wins.
 - All interval sizes and units; reject zero/negative/invalid settings.
@@ -350,6 +377,7 @@ Set secure proxy/public-origin rules explicitly; do not trust arbitrary forwarde
 - No unintended cross-equipment preset propagation.
 
 ### API tests
+
 - Equipment/task/event CRUD validations, cross-equipment ownership, migration/persistence, atomic edits.
 - Auth for every private route, setup only once, session revocation, Origin/CSRF checks, rate limiting.
 - Upload abuse: oversized, mismatched MIME, traversal, unsafe extensions, unauthenticated download.
@@ -359,6 +387,7 @@ Set secure proxy/public-origin rules explicitly; do not trust arbitrary forwarde
 - Baseline events participate in latest-applicable selection and are superseded by the first real service event; deleting that event falls back to the baseline.
 
 ### Critical Playwright end-to-end scenario
+
 1. Log in.
 2. Add truck with current reading **12,000 miles**.
 3. Create **Oil Change**, **every 5,000 miles**.
@@ -376,6 +405,7 @@ Set secure proxy/public-origin rules explicitly; do not trust arbitrary forwarde
 Also test a 100-hour ATV schedule and a combined 5,000-mile/12-month schedule.
 
 ### Definition of done
+
 **No 'complete' status** unless all are true:
 - User can add multiple equipment types, update meters, create/edit/disable tasks and **change intervals at any time**.
 - User can record/correct service history, including dates and meter readings.
