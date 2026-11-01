@@ -54,7 +54,7 @@ password.
 ```bash
 bun run typecheck               # all packages
 bunx biome ci .                 # lint + format
-bun test                        # unit/integration (78 tests)
+bun test                        # unit/integration (69 tests)
 bun run build                   # production web bundle
 bun run e2e                     # Playwright critical scenario (build first)
 ```
@@ -62,13 +62,14 @@ bun run e2e                     # Playwright critical scenario (build first)
 ## Docker deployment
 
 ```bash
-cp .env.example .env
-docker compose up -d --build
+docker compose up -d --build    # .env is optional — copy .env.example only to change defaults
 docker compose ps               # healthcheck: http://localhost:3000/health
 ```
 
-The first run opens http://localhost:3000 and shows the password setup screen.
-All state (SQLite database + uploads) lives in the `mt_v1_data` volume under
+The first run opens http://localhost:3000 and shows the password setup
+screen. If port 3000 is already taken on the host, set `MT_HOST_PORT=3001`
+(in `.env` or inline: `MT_HOST_PORT=3001 docker compose up -d`). All state
+(SQLite database + uploads) lives in the `mt_v1_data` volume under
 `MT_DATA_DIR` (`/data`). **Never run `docker compose down -v`** — that deletes
 the volume with your data.
 
@@ -79,9 +80,11 @@ the volume with your data.
    `docker compose up -d`.
 2. In NPM: **Proxy Host** → `mt.example.com` → forward to `maintenance-tracker:3000`,
    enable HTTP/2 and force SSL.
-3. Keep `MT_TRUST_PROXY=1` (required: it enables the TLS-aware cookie and
-   CSRF checks) and `MT_SECURE_COOKIES=1`. Never expose port 3000 publicly;
-   the loopback `ports:` mapping or removing it entirely is correct.
+3. Keep `MT_TRUST_PROXY=1` (required behind a TLS-terminating proxy: it
+   relaxes the CSRF origin check to a hostname match and reads the real
+   client IP for the login rate limiter) and `MT_SECURE_COOKIES=1` (enables
+   the `__Host-` Secure cookie). Never expose port 3000 publicly; the
+   loopback `ports:` mapping or removing it entirely is correct.
 4. Cookies use `__Host-` semantics under HTTPS; the app must be served from a
    single HTTPS origin.
 
@@ -131,6 +134,7 @@ MT_DATA_DIR=./data bun apps/server/src/cli/reset-password.ts --password "new-pas
 
 All environment variables and defaults are documented in
 [`.env.example`](.env.example). Key ones: `MT_DATA_DIR` (storage),
+`MT_HOST_PORT` (compose host port; container always listens on 3000),
 `MT_TRUST_PROXY` (only with a controlled proxy), `MT_MAX_UPLOAD_MB`, `TZ`
 (drives calendar due dates).
 
@@ -143,6 +147,7 @@ packages/shared  Due-status engine, decimal tenths, Zod contracts, dates
 packages/db      Drizzle schema, migrations, preset seed
 docker/          Dockerfile (multi-stage, non-root)
 tests/e2e        Playwright critical scenario (*.e2e.ts)
+wiki/            Documentation site (GitHub-wiki-formatted)
 build-plan.md    Authoritative specification
 ```
 
