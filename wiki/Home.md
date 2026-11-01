@@ -11,11 +11,11 @@ protects everything — no accounts, no cloud, no telemetry.
 
 ### For users
 
-| Page                               | What's in it                                              |
-| ---------------------------------- | --------------------------------------------------------- |
-| [Getting Started](Getting-Started) | First launch, master password, UI tour                    |
-| [Concepts](Concepts)               | Equipment, tasks, schedules, statuses, baselines          |
-| [Using the App](Using-the-App)     | Dashboard, equipment, tasks, history, documents, settings |
+| Page                               | What's in it                                                            |
+| ---------------------------------- | ----------------------------------------------------------------------- |
+| [Getting Started](Getting-Started) | First launch, master password, UI tour                                  |
+| [Concepts](Concepts)               | Equipment, tasks, schedules, statuses, baselines                        |
+| [Using the App](Using-the-App)     | Dashboard, equipment, fuel economy, tasks, history, documents, settings |
 
 ### For operators
 

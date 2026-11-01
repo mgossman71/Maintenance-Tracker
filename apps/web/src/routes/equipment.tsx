@@ -1,9 +1,10 @@
-import type { EquipmentDto, EventDto, FuelLogDto } from "@mt/shared";
-import { formatGallons, formatMeter, parseMeterToTenths, todayLocalDate } from "@mt/shared";
+import type { EquipmentDto, EventDto } from "@mt/shared";
+import { formatGallons, formatMeter, parseMeterToTenths } from "@mt/shared";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { ChevronRight, FileText, Fuel, Pencil, Plus, Upload, Wrench } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ConfirmDialog, RecordServiceDialog } from "../components/dialogs";
+import { FuelDialog, type FuelEntry } from "../components/fuel-dialog";
 import { TaskDialog } from "../components/task-dialog";
 import { Button } from "../components/ui/button";
 import { Badge, Card, CardContent } from "../components/ui/card";
@@ -674,8 +675,6 @@ function DocumentsTab({ equipment }: { equipment: EquipmentDto }) {
 
 // --- Fuel tab ---------------------------------------------------------------
 
-type FuelEntry = FuelLogDto & { distanceTenths: number | null; mpgTenths: number | null };
-
 function FuelTab({ equipment }: { equipment: EquipmentDto }) {
 	const fuel = useFuel(equipment.id);
 	const remove = useWrite((id: string) => api.delete(`/api/fuel/${id}`));
@@ -828,119 +827,6 @@ function SummaryCard({ label, value, hint }: { label: string; value: string; hin
 				<p className="truncate text-xs text-muted-foreground">{hint}</p>
 			</CardContent>
 		</Card>
-	);
-}
-
-/** Dollars-per-gallon text -> integer cents (pump's 3rd decimal rounds). */
-function parsePriceCents(input: string): number | null | undefined {
-	const str = input.trim();
-	if (str === "") return null;
-	const dollars = Number.parseFloat(str);
-	if (!Number.isFinite(dollars) || dollars <= 0 || dollars > 1000) return undefined;
-	return Math.round(dollars * 100);
-}
-
-function FuelDialog({
-	open,
-	onClose,
-	equipment,
-	entry,
-}: {
-	open: boolean;
-	onClose: () => void;
-	equipment: EquipmentDto;
-	entry: FuelEntry | null;
-}) {
-	const [loggedAt, setLoggedAt] = useState(entry?.loggedAt ?? todayLocalDate());
-	const [odometer, setOdometer] = useState(() =>
-		entry
-			? formatMeter(entry.odometer)
-			: equipment.currentMeter !== null
-				? formatMeter(equipment.currentMeter)
-				: "",
-	);
-	const [gallons, setGallons] = useState(entry ? formatGallons(entry.gallonsHundredths) : "");
-	const [price, setPrice] = useState(
-		entry?.pricePerGallonCents != null
-			? (entry.pricePerGallonCents / 100).toFixed(2).replace(/\.00$/, "")
-			: "",
-	);
-
-	const priceCents = parsePriceCents(price);
-	const odometerTenths = odometer.trim() === "" ? null : parseMeterToTenths(odometer);
-	const canSubmit = odometerTenths !== null && gallons.trim() !== "" && priceCents !== undefined;
-
-	const save = useWrite(
-		() =>
-			entry
-				? api.patch(`/api/fuel/${entry.id}`, {
-						loggedAt,
-						odometer: odometerTenths,
-						gallons,
-						pricePerGallonCents: priceCents,
-					})
-				: api.post(`/api/equipment/${equipment.id}/fuel`, {
-						loggedAt,
-						odometer: odometerTenths,
-						gallons,
-						pricePerGallonCents: priceCents,
-					}),
-		{ onDone: () => onClose() },
-	);
-
-	return (
-		<Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-			<DialogContent title={entry ? "Edit fill-up" : "Add fill-up"}>
-				<form
-					className="grid gap-4"
-					onSubmit={(e) => {
-						e.preventDefault();
-						if (canSubmit) save.mutate();
-					}}
-				>
-					<Field label="Date">
-						<Input type="date" value={loggedAt} onChange={(e) => setLoggedAt(e.target.value)} />
-					</Field>
-					<Field label="Odometer (miles)" hint="Reading on the pump when you finished.">
-						<Input
-							inputMode="decimal"
-							autoFocus={!entry}
-							value={odometer}
-							onChange={(e) => setOdometer(e.target.value)}
-						/>
-					</Field>
-					<Field label="Gallons">
-						<Input
-							inputMode="decimal"
-							placeholder="12.75"
-							value={gallons}
-							onChange={(e) => setGallons(e.target.value)}
-						/>
-					</Field>
-					<Field label="Price per gallon ($)" hint="Optional — needed for fuel cost totals.">
-						<Input
-							inputMode="decimal"
-							placeholder="3.50"
-							value={price}
-							onChange={(e) => setPrice(e.target.value)}
-						/>
-					</Field>
-					{save.error ? (
-						<p className="text-sm text-destructive">
-							{save.error instanceof ApiClientError ? save.error.message : "Could not save."}
-						</p>
-					) : null}
-					<DialogFooter>
-						<Button type="button" variant="ghost" onClick={onClose}>
-							Cancel
-						</Button>
-						<Button type="submit" disabled={save.isPending || !canSubmit}>
-							{save.isPending ? "Saving…" : entry ? "Save" : "Add fill-up"}
-						</Button>
-					</DialogFooter>
-				</form>
-			</DialogContent>
-		</Dialog>
 	);
 }
 

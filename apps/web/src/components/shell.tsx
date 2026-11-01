@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Gauge, LayoutDashboard, Settings, Wrench } from "lucide-react";
+import { Fuel, Gauge, LayoutDashboard, Settings, Wrench } from "lucide-react";
 import { useEffect } from "react";
 import { onUnauthorized } from "../lib/api";
 import { useSession } from "../lib/hooks";
@@ -96,6 +96,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 					Equipment
 				</Link>
 				<Link
+					to="/fuel"
+					className="text-muted-foreground"
+					activeProps={{ className: "font-semibold text-primary" }}
+				>
+					Fuel
+				</Link>
+				<Link
 					to="/settings"
 					className="text-muted-foreground"
 					activeProps={{ className: "font-semibold text-primary" }}
@@ -104,9 +111,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 				</Link>
 			</div>
 			<nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card pb-[env(safe-area-inset-bottom)] md:hidden">
-				<div className="grid grid-cols-3 text-xs">
+				<div className="grid grid-cols-4 text-xs">
 					<NavLink to="/" label="Dashboard" icon={<LayoutDashboard className="size-5" />} />
 					<NavLink to="/equipment" label="Equipment" icon={<Wrench className="size-5" />} />
+					<NavLink to="/fuel" label="Fuel" icon={<Fuel className="size-5" />} />
 					<NavLink to="/settings" label="Settings" icon={<Settings className="size-5" />} />
 				</div>
 			</nav>
@@ -119,7 +127,7 @@ function NavLink({
 	label,
 	icon,
 }: {
-	to: "/" | "/equipment" | "/settings";
+	to: "/" | "/equipment" | "/fuel" | "/settings";
 	label: string;
 	icon: React.ReactNode;
 }) {

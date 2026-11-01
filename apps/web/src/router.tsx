@@ -3,6 +3,7 @@ import { createRootRoute, createRoute, createRouter } from "@tanstack/react-rout
 import { AppShell, AuthGate } from "./components/shell";
 import { DashboardPage } from "./routes/dashboard";
 import { EquipmentDetailPage, EquipmentListPage } from "./routes/equipment";
+import { FuelPage } from "./routes/fuel";
 import { LoginPage } from "./routes/login";
 import { SettingsPage } from "./routes/settings";
 
@@ -50,6 +51,12 @@ const equipmentDetailRoute = createRoute({
 	component: guarded(EquipmentDetailPage),
 });
 
+const fuelRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/fuel",
+	component: guarded(FuelPage),
+});
+
 const settingsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/settings",
@@ -62,6 +69,7 @@ export const router = createRouter({
 		dashboardRoute,
 		equipmentRoute,
 		equipmentDetailRoute,
+		fuelRoute,
 		settingsRoute,
 	]),
 	defaultPreload: "intent",

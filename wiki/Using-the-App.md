@@ -61,6 +61,15 @@ thumbnails (click to view full-size; PDFs download).
 - **Edit** fixes any field (recalculation happens automatically); **Delete**
   warns that due dates will be recalculated from the remaining history.
 
+## Fuel page
+
+A dedicated nav entry (bottom bar on mobile, header links on desktop) for
+grab-and-go logging: one card per **mile-based** vehicle with its odometer,
+last MPG, blended MPG and total fuel cost — each with an **Add fill-up**
+button that opens the dialog right there. Nothing to navigate through;
+hour-based equipment doesn't appear. The vehicle's own Fuel tab (below)
+adds the full fill-up history with edit/delete.
+
 ## Equipment detail — Fuel tab
 
 Shown only for **mile-based** equipment (fuel economy isn't meaningful for

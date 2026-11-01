@@ -225,3 +225,27 @@ test("fuel economy: fill-ups compute MPG; tab hidden on hours equipment", async 
 	await page.getByText("Raptor ATV").first().click();
 	await expect(page.getByRole("tab", { name: "Fuel" })).toHaveCount(0);
 });
+
+test("fuel page: quick fill-up from the nav, no equipment detour", async ({ page }) => {
+	await login(page);
+	await page.getByRole("link", { name: "Fuel" }).first().click();
+	await expect(page.getByRole("heading", { name: "Fuel" })).toBeVisible();
+	// Miles vehicles get a card; the hours ATV does not exist here.
+	await expect(page.getByText("F-150").first()).toBeVisible();
+	await expect(page.getByText("Raptor ATV")).toHaveCount(0);
+
+	// Quick add straight from the card (state from earlier tests: one
+	// baseline fill-up at 13,100 mi, odometer at 13,100).
+	await page.getByRole("button", { name: "Add fill-up for F-150" }).click();
+	const dlg = page.getByRole("dialog", { name: "Add fill-up" });
+	await expect(dlg.getByLabel("Odometer (miles)")).toHaveValue("13100");
+	await dlg.getByLabel("Odometer (miles)").fill("13400");
+	await dlg.getByLabel("Gallons").fill("14");
+	await dlg.getByLabel(/Price per gallon/).fill("3.25");
+	await dlg.getByRole("button", { name: "Add fill-up" }).click();
+	await expect(dlg).toBeHidden();
+
+	// Card stats recalculate live: 300 mi / 14 gal = 21.4; cost $45.50.
+	await expect(page.getByText("21.4").first()).toBeVisible();
+	await expect(page.getByText("$45.50").first()).toBeVisible();
+});
