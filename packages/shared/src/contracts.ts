@@ -329,7 +329,12 @@ export interface TaskStatusDto {
 export interface DashboardGroup {
 	status: string;
 	items: Array<
-		TaskStatusDto & { equipmentName: string; meterKind: string; currentMeter: number | null }
+		TaskStatusDto & {
+			taskName: string;
+			equipmentName: string;
+			meterKind: string;
+			currentMeter: number | null;
+		}
 	>;
 }
 

@@ -27,7 +27,12 @@ export function buildDashboard(db: AppDatabase, config: ServerConfig): Dashboard
 	const statuses = computeAllStatuses(db, tasks, settings, today);
 
 	const items: Array<
-		TaskStatusDto & { equipmentName: string; meterKind: string; currentMeter: number | null }
+		TaskStatusDto & {
+			taskName: string;
+			equipmentName: string;
+			meterKind: string;
+			currentMeter: number | null;
+		}
 	> = [];
 	for (const task of tasks) {
 		const status = statuses.get(task.id);
@@ -35,6 +40,7 @@ export function buildDashboard(db: AppDatabase, config: ServerConfig): Dashboard
 		if (!status || !eqRow) continue;
 		items.push({
 			...status,
+			taskName: task.name,
 			equipmentName: eqRow.name,
 			meterKind: eqRow.meterKind,
 			currentMeter: eqRow.currentMeter,
