@@ -2,7 +2,7 @@ import type { AppDatabase, MaintenanceTaskRow } from "@mt/db";
 import { maintenanceEvents, maintenanceTasks } from "@mt/db";
 import type { CalendarUnit } from "@mt/shared";
 import { eq } from "drizzle-orm";
-import { badRequest, notFound, nowIso, uuid } from "../util";
+import { notFound, nowIso, uuid, validation } from "../util";
 import { getEquipmentRow } from "./equipment";
 import { toTaskDto } from "./status";
 
@@ -21,15 +21,15 @@ export interface TaskWriteInput {
 function validateEffective(task: MaintenanceTaskRow): void {
 	if (!task.enabled) return; // disabled tasks keep their shape untouched
 	if (!task.meterEnabled && !task.calendarEnabled) {
-		throw badRequest("At least one schedule dimension (distance/hours or time) must be enabled.");
+		throw validation("At least one schedule dimension (distance/hours or time) must be enabled.");
 	}
 	if (task.meterEnabled && (task.meterInterval === null || task.meterInterval <= 0)) {
-		throw badRequest(
+		throw validation(
 			"A positive mileage/hours interval is required when that dimension is enabled.",
 		);
 	}
 	if (task.calendarEnabled && (task.calendarValue === null || !task.calendarUnit)) {
-		throw badRequest(
+		throw validation(
 			"A positive time interval and unit are required when that dimension is enabled.",
 		);
 	}
@@ -63,7 +63,7 @@ export function createTask(
 		updatedAt: now,
 	};
 	if (row.meterEnabled && eqRow.meterKind === "none") {
-		throw badRequest("This equipment tracks no meter; enable the time dimension instead.");
+		throw validation("This equipment tracks no meter; enable the time dimension instead.");
 	}
 	validateEffective(row);
 	// Baselines are optional at creation: a task without enough last-service
@@ -75,7 +75,7 @@ export function createTask(
 	// the single baseline strategy (no baselines table).
 	if (input.baselineDate || input.baselineMeter != null) {
 		if (!input.baselineDate && row.calendarEnabled) {
-			throw badRequest(
+			throw validation(
 				"A baseline date is required when a baseline reading is given and the time dimension is enabled.",
 			);
 		}
@@ -129,11 +129,11 @@ export function updateTask(db: AppDatabase, id: string, patch: TaskWriteInput) {
 		updatedAt: nowIso(),
 	};
 	if (merged.meterEnabled && eqRow.meterKind === "none") {
-		throw badRequest("This equipment tracks no meter; disable the meter dimension.");
+		throw validation("This equipment tracks no meter; disable the meter dimension.");
 	}
 	// Guard against wiping an enabled dimension's interval without disabling it.
 	if (merged.enabled && merged.meterEnabled && patch.meterInterval === null) {
-		throw badRequest("Set the meter dimension interval or disable that dimension.");
+		throw validation("Set the meter dimension interval or disable that dimension.");
 	}
 	validateEffective(merged);
 	db.update(maintenanceTasks).set(merged).where(eq(maintenanceTasks.id, id)).run();

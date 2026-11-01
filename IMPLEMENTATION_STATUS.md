@@ -6,17 +6,17 @@ Authoritative progress record (build-plan.md §13). Updated at every checkpoint.
 
 ## Verified complete
 
-| Area | Detail | Evidence |
-|---|---|---|
-| Tooling | Bun 1.4.4 workspaces, Biome, TS strict, CI-compatible scripts | `bunx biome ci .` clean; `tsc --noEmit` clean ×3 |
-| packages/shared | Tenth-integer meter math, calendar arithmetic with clamping + timezone today, pure due-status engine, Zod contracts, DTO types | 33 bun tests pass (all mandatory §4 examples + §12 unit cases) |
-| packages/db | Drizzle schema (equipment, meter_readings, tasks w/ per-dimension enable flags, events w/ source=baseline, presets, documents, attachments, sessions, settings KV), initial migration, preset seed | Migration applies; verification query passes |
-| Auth (M0 slice) | Argon2id via Bun.password, setup race guard, hashed opaque sessions, idle+absolute expiry, logout, password change revokes all | Smoke: anon API 401, double-setup 409, login ok |
-| Equipment (M1) | CRUD, archive, hard delete, meter kind guard, reading update/confirm/correct with `meter_readings` history | Smoke incl. restart persistence |
-| Tasks (M2) | CRUD, PATCH merge + effective revalidation, prospective interval edits, meterKind compatibility rules | Smoke critical scenario passes |
-| Events (M3) | Record/backfill/edit/delete, meter required for meter tasks, chronology warnings (never block), baseline-as-event strategy, latest-applicable tie-breaker | Smoke + unit tests |
-| Dashboard (M4 partial) | Statuses, grouping/ordering, stale-reading prompts, excludes archived/disabled | Smoke returns groups |
-| Critical scenario | §12 Playwright equivalent exercised over HTTP: 17/17 checks (12,000→15,000→13,000→DUE_SOON→DUE→OVERDUE→16,100→17,100, history preserved, restart persistence) | `bun /tmp/mt-flow.ts` (to be converted into `bun test` suite) |
+| Area                   | Detail                                                                                                                                                                                             | Evidence                                                       |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Tooling                | Bun 1.4.4 workspaces, Biome, TS strict, CI-compatible scripts                                                                                                                                      | `bunx biome ci .` clean; `tsc --noEmit` clean ×3               |
+| packages/shared        | Tenth-integer meter math, calendar arithmetic with clamping + timezone today, pure due-status engine, Zod contracts, DTO types                                                                     | 33 bun tests pass (all mandatory §4 examples + §12 unit cases) |
+| packages/db            | Drizzle schema (equipment, meter_readings, tasks w/ per-dimension enable flags, events w/ source=baseline, presets, documents, attachments, sessions, settings KV), initial migration, preset seed | Migration applies; verification query passes                   |
+| Auth (M0 slice)        | Argon2id via Bun.password, setup race guard, hashed opaque sessions, idle+absolute expiry, logout, password change revokes all                                                                     | Smoke: anon API 401, double-setup 409, login ok                |
+| Equipment (M1)         | CRUD, archive, hard delete, meter kind guard, reading update/confirm/correct with `meter_readings` history                                                                                         | Smoke incl. restart persistence                                |
+| Tasks (M2)             | CRUD, PATCH merge + effective revalidation, prospective interval edits, meterKind compatibility rules                                                                                              | Smoke critical scenario passes                                 |
+| Events (M3)            | Record/backfill/edit/delete, meter required for meter tasks, chronology warnings (never block), baseline-as-event strategy, latest-applicable tie-breaker                                          | Smoke + unit tests                                             |
+| Dashboard (M4 partial) | Statuses, grouping/ordering, stale-reading prompts, excludes archived/disabled                                                                                                                     | Smoke returns groups                                           |
+| Critical scenario      | §12 Playwright equivalent exercised over HTTP: 17/17 checks (12,000→15,000→13,000→DUE_SOON→DUE→OVERDUE→16,100→17,100, history preserved, restart persistence)                                      | `bun /tmp/mt-flow.ts` (to be converted into `bun test` suite)  |
 
 ## Not yet implemented
 

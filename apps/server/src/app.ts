@@ -91,17 +91,23 @@ export function createApp({ db, config }: AppContext): Hono<AppVariables> {
 	});
 
 	// --- CSRF: verify Origin on state-changing API requests ------------------
+	// Same-origin fetch sends Origin; reject any that is not ours. Behind a
+	// TLS-terminating proxy the scheme legitimately differs, so require a
+	// host match there and strict full-origin match when bound directly.
 	app.use("/api/*", async (c, next) => {
 		if (["POST", "PATCH", "PUT", "DELETE"].includes(c.req.method)) {
 			const origin = c.req.header("origin");
 			if (origin) {
-				let originHost: string | null = null;
+				let originUrl: URL | null = null;
 				try {
-					originHost = new URL(origin).host;
+					originUrl = new URL(origin);
 				} catch {
-					originHost = null;
+					originUrl = null;
 				}
-				if (!originHost || originHost !== c.req.header("host")) {
+				const requestUrl = new URL(c.req.url);
+				const hostMatches = originUrl?.hostname === requestUrl.hostname;
+				const fullMatch = hostMatches && originUrl?.origin === requestUrl.origin;
+				if (!originUrl || !(fullMatch || (config.trustProxy && hostMatches))) {
 					throw forbidden("Cross-origin request rejected");
 				}
 			} else {

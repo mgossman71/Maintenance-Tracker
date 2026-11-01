@@ -34,7 +34,7 @@ export function registerMiscRoutes(
 	app.post("/api/presets", async (c) => {
 		const input = parse(presetCreateInput, await c.req.json().catch(() => null));
 		const now = nowIso();
-		const max = db.get<{ m: number | null }>(sql`SELECT MAX(sort_order) AS m FROM task_presets`);
+		const max = db.select({ m: sql<number | null>`MAX(sort_order)` }).from(taskPresets).get();
 		const row = {
 			id: uuid(),
 			name: input.name,

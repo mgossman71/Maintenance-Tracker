@@ -22,6 +22,9 @@ export class ApiError extends Error {
 export const notFound = (what: string) => new ApiError(404, "not_found", `${what} not found`);
 export const badRequest = (message: string, fields?: Record<string, string>) =>
 	new ApiError(400, "bad_request", message, fields);
+/** Semantic validation failure (shape was valid; domain rules were not). */
+export const validation = (message: string, fields?: Record<string, string>) =>
+	new ApiError(422, "validation", message, fields);
 export const conflict = (message: string) => new ApiError(409, "conflict", message);
 export const forbidden = (message = "Forbidden") => new ApiError(403, "forbidden", message);
 export const unauthorized = (message = "Authentication required") =>

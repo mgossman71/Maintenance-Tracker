@@ -18,11 +18,12 @@ export const zCalendarDate = z
 /**
  * Meter values on the API wire are integer tenths of the unit (127.5 h -> 1275),
  * matching storage; clients convert human input with `parseMeterToTenths`.
+ * Omitted keys stay absent (PATCH-safe); explicit null clears the value.
  */
 function zTenths(positive: boolean) {
 	return z
-		.union([z.string(), z.number()])
-		.nullish()
+		.union([z.string(), z.number(), z.null()])
+		.optional()
 		.superRefine((value, ctx) => {
 			if (value === null || value === undefined) return;
 			const str = String(value).trim();
@@ -30,13 +31,13 @@ function zTenths(positive: boolean) {
 				ctx.addIssue({ code: "custom", message: "Meter values must be whole numbers of tenths" });
 				return;
 			}
-			const tenths = Number(str);
-			if (tenths <= 0 && positive) {
+			if (positive && Number(str) <= 0) {
 				ctx.addIssue({ code: "custom", message: "Must be greater than zero" });
 			}
 		})
 		.transform((value) => {
-			if (value === null || value === undefined) return null;
+			if (value === undefined) return undefined;
+			if (value === null) return null;
 			const tenths = Number(String(value).trim());
 			return Number.isFinite(tenths) ? tenths : null;
 		});
@@ -87,7 +88,12 @@ export const equipmentCreateInput = z.object({
 });
 
 export const equipmentUpdateInput = z.object({
-	...equipmentBase,
+	name: zTrimmed(120).optional(),
+	category: zOptionalText(60),
+	make: zOptionalText(60),
+	model: zOptionalText(60),
+	year: zYear,
+	description: zOptionalText(),
 	// meterKind may only change through the guarded conversion path (v1: only
 	// allowed while no readings or meter-based tasks exist).
 	meterKind: equipmentMeterKind.optional(),
@@ -151,41 +157,30 @@ export const taskCreateInput = z
 	.superRefine((value, ctx) => {
 		const message = taskShapeRefine(value);
 		if (message) ctx.addIssue({ code: "custom", message, path: ["meterEnabled"] });
-		if (value.baselineMeter !== null && value.baselineDate === undefined) {
-			// baseline meter without any baseline date is allowed only when the
-			// calendar dimension is disabled.
-			if (value.calendarEnabled) {
-				ctx.addIssue({
-					code: "custom",
-					message: "A baseline date is required when the time dimension is enabled.",
-					path: ["baselineDate"],
-				});
-			}
-		}
-	});
-
-export const taskUpdateInput = z
-	.object({
-		name: zTrimmed(120).optional(),
-		description: zOptionalText(),
-		enabled: z.boolean().optional(),
-		meterEnabled: z.boolean().optional(),
-		meterInterval: zTenthsPositive(),
-		calendarEnabled: z.boolean().optional(),
-		calendarValue: z.coerce.number().int().min(1).max(10000).optional().nullable(),
-		calendarUnit: z.enum(CALENDAR_UNITS).optional().nullable(),
-	})
-	.superRefine((value, ctx) => {
-		// PATCH semantics: the server merges with the stored task and
-		// re-validates the effective row (services/tasks.ts).
-		if (value.meterEnabled === true && value.meterInterval === undefined) {
+		// A baseline reading paired with an enabled time dimension needs its
+		// date so the calendar threshold is not silently defaulted to today.
+		if (value.baselineMeter != null && value.calendarEnabled && value.baselineDate == null) {
 			ctx.addIssue({
 				code: "custom",
-				message: "meterInterval must be provided when enabling the meter dimension.",
-				path: ["meterInterval"],
+				message:
+					"A baseline date is required when a baseline reading is given and the time dimension is enabled.",
+				path: ["baselineDate"],
 			});
 		}
 	});
+
+export const taskUpdateInput = z.object({
+	name: zTrimmed(120).optional(),
+	description: zOptionalText(),
+	enabled: z.boolean().optional(),
+	meterEnabled: z.boolean().optional(),
+	meterInterval: zTenthsPositive(),
+	calendarEnabled: z.boolean().optional(),
+	calendarValue: z.coerce.number().int().min(1).max(10000).optional().nullable(),
+	calendarUnit: z.enum(CALENDAR_UNITS).optional().nullable(),
+	// PATCH: omitted keys keep stored values; the server merges and
+	// re-validates the effective row (services/tasks.ts).
+});
 
 // --- Events -------------------------------------------------------------------
 

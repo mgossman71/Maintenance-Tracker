@@ -106,22 +106,24 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
 
 /** Insert the builtin preset library when none exist yet. Idempotent. */
 export function seedBuiltinPresets(db: AppDatabase): void {
-	const count = db.get<{ c: number }>(sql`SELECT COUNT(*) AS c FROM task_presets`);
-	if ((count?.c ?? 0) > 0) return;
+	const row = db.select({ c: sql<number>`COUNT(*)` }).from(taskPresets).get();
+	if ((row?.c ?? 0) > 0) return;
 	const now = new Date().toISOString();
-	db.insert(taskPresets).values(
-		BUILTIN_PRESETS.map((preset, index) => ({
-			id: randomUUID(),
-			name: preset.name,
-			description: preset.description,
-			suggestMeterInterval: preset.suggestMeterInterval,
-			suggestCalendarValue: preset.suggestCalendarValue,
-			suggestCalendarUnit: preset.suggestCalendarUnit,
-			sortOrder: index,
-			isBuiltin: true,
-			hidden: false,
-			createdAt: now,
-			updatedAt: now,
-		})),
-	);
+	db.insert(taskPresets)
+		.values(
+			BUILTIN_PRESETS.map((preset, index) => ({
+				id: randomUUID(),
+				name: preset.name,
+				description: preset.description,
+				suggestMeterInterval: preset.suggestMeterInterval,
+				suggestCalendarValue: preset.suggestCalendarValue,
+				suggestCalendarUnit: preset.suggestCalendarUnit,
+				sortOrder: index,
+				isBuiltin: true,
+				hidden: false,
+				createdAt: now,
+				updatedAt: now,
+			})),
+		)
+		.run();
 }
