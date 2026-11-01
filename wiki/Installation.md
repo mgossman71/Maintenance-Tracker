@@ -20,7 +20,7 @@ curl http://localhost:3000/health   # {"status":"ok",...}
 
 `compose.yaml` binds the port to `127.0.0.1:3000` on purpose — expose the app
 only through a reverse proxy with HTTPS (next section). All state persists in
-the `mt_data` volume; **never `docker compose down -v`** unless you mean to
+the `mt_v1_data` volume; **never `docker compose down -v`** unless you mean to
 delete your data.
 
 The image (`docker/Dockerfile`) is multi-stage: a build stage compiles the web

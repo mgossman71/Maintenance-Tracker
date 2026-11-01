@@ -23,7 +23,7 @@ db.exec(`VACUUM INTO "/data/backup-${new Date().toISOString().slice(0, 10)}.db"`
 
 # 2. Copy the snapshot and uploads off the volume
 docker compose cp app:/data/backup-2026-11-01.db ./backup-2026-11-01.db
-docker run --rm -v maintenance-tracker_mt_data:/data -v "$PWD:/backup" alpine \
+docker run --rm -v maintenance-tracker_mt_v1_data:/data -v "$PWD:/backup" alpine \
   cp -r /data/uploads /backup/uploads-backup
 ```
 

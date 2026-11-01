@@ -68,7 +68,7 @@ docker compose ps               # healthcheck: http://localhost:3000/health
 ```
 
 The first run opens http://localhost:3000 and shows the password setup screen.
-All state (SQLite database + uploads) lives in the `mt_data` volume under
+All state (SQLite database + uploads) lives in the `mt_v1_data` volume under
 `MT_DATA_DIR` (`/data`). **Never run `docker compose down -v`** — that deletes
 the volume with your data.
 
@@ -109,7 +109,7 @@ db.exec(`VACUUM INTO "/data/backup-${new Date().toISOString().slice(0,10)}.db"`)
 '
 # Then copy the snapshot and the uploads directory off the volume:
 docker compose cp app:/data/backup-2026-11-01.db ./backup-2026-11-01.db
-docker run --rm -v maintenance-tracker_mt_data:/data -v "$PWD:/backup" alpine \
+docker run --rm -v maintenance-tracker_mt_v1_data:/data -v "$PWD:/backup" alpine \
   cp -r /data/uploads /backup/uploads-backup
 ```
 

@@ -6,15 +6,20 @@ services:
     image: maintenance-tracker:latest
     container_name: maintenance-tracker
     restart: unless-stopped
+    # .env is optional — the image defaults are correct. Copy .env.example
+    # to .env only when you need to change something (TZ, MT_DATA_DIR, ...).
     env_file:
-      - .env
+      - path: .env
+        required: false
     # Keep the port on loopback unless you terminate TLS in front of this.
     # With Nginx Proxy Manager, join the shared proxy network instead
     # (see README "Nginx Proxy Manager").
     ports:
-      - "127.0.0.1:3000:3000"
+      # Host port is overridable (e.g. MT_HOST_PORT=3001 in .env) when
+      # something else already owns 3000. Container port stays 3000.
+      - "127.0.0.1:${MT_HOST_PORT:-3000}:3000"
     volumes:
-      - mt_data:/data
+      - mt_v1_data:/data
     networks:
       - default
       # - npm_proxy   # uncomment when using Nginx Proxy Manager
@@ -32,7 +37,7 @@ services:
       start_period: 10s
 
 volumes:
-  mt_data:
+  mt_v1_data:
 
 networks:
   default:
