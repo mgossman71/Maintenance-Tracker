@@ -66,27 +66,35 @@ docker compose up -d --build    # .env is optional — copy .env.example only to
 docker compose ps               # healthcheck: http://localhost:3000/health
 ```
 
-The first run opens http://localhost:3000 and shows the password setup
-screen. If port 3000 is already taken on the host, set `MT_HOST_PORT=3001`
-(in `.env` or inline: `MT_HOST_PORT=3001 docker compose up -d`). All state
-(SQLite database + uploads) lives in the `mt_v1_data` volume under
-`MT_DATA_DIR` (`/data`). **Never run `docker compose down -v`** — that deletes
-the volume with your data.
+The first run shows the password setup screen at the proxied HTTPS URL (or
+`http://<host>:3000` locally). All state (SQLite database + uploads) lives in
+the `mt_v1_data` volume under `MT_DATA_DIR` (`/data`). **Never run
+`docker compose down -v`** — that deletes the volume with your data.
 
-### Nginx Proxy Manager (HTTPS)
+### Reverse proxy (required for remote access)
 
-1. Put this container and NPM on one shared Docker network. In `compose.yaml`
-   uncomment the `npm_proxy` network + the external network block, then
-   `docker compose up -d`.
-2. In NPM: **Proxy Host** → `mt.example.com` → forward to `maintenance-tracker:3000`,
-   enable HTTP/2 and force SSL.
-3. Keep `MT_TRUST_PROXY=1` (required behind a TLS-terminating proxy: it
-   relaxes the CSRF origin check to a hostname match and reads the real
-   client IP for the login rate limiter) and `MT_SECURE_COOKIES=1` (enables
-   the `__Host-` Secure cookie). Never expose port 3000 publicly; the
-   loopback `ports:` mapping or removing it entirely is correct.
-4. Cookies use `__Host-` semantics under HTTPS; the app must be served from a
-   single HTTPS origin.
+The app serves **no TLS of its own** and must never be the public endpoint.
+`compose.yaml` publishes the port on all interfaces so an **external reverse
+proxy** (Nginx, Nginx Proxy Manager, Caddy, Traefik…) can terminate HTTPS in
+front of it. The proxy must:
+
+1. **Terminate TLS** with a valid certificate and force HTTPS (HSTS
+   recommended). Cookies use `__Host-` Secure semantics, so the app must be
+   served from a **single HTTPS origin**.
+2. **Forward the original `Host` header** (`proxy_set_header Host $host;` —
+   default in NPM/Caddy/Traefik). The CSRF check compares the browser's
+   `Origin` against this.
+3. **Set `X-Forwarded-For`** so the login rate limiter sees real client IPs.
+
+And `.env` must set `MT_TRUST_PROXY=1` — it relaxes the CSRF origin check to
+a hostname match (required when the proxy terminates TLS) and enables
+`X-Forwarded-For` parsing. Keep `MT_SECURE_COOKIES=1` (the default).
+
+**Restrict the published port to the proxy** at the firewall (e.g.
+`ufw allow from <proxy-ip> to any port 3001` or a security group) — anyone
+who can reach it directly bypasses TLS and can hammer the login endpoint
+unthrottled-by-network-devices. If your proxy shares one Docker host, prefer
+removing `ports:` entirely and joining the container to the proxy's network.
 
 ### Updates
 

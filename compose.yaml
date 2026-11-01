@@ -11,13 +11,15 @@ services:
     env_file:
       - path: .env
         required: false
-    # Keep the port on loopback unless you terminate TLS in front of this.
-    # With Nginx Proxy Manager, join the shared proxy network instead
-    # (see README "Nginx Proxy Manager").
+    # Published on all interfaces so an external reverse proxy can reach it.
+    # The proxy MUST terminate TLS and forward the original Host header, and
+    # .env MUST set MT_TRUST_PROXY=1. Firewall this port to the proxy only.
     ports:
-      # Host port is overridable (e.g. MT_HOST_PORT=3001 in .env) when
-      # something else already owns 3000. Container port stays 3000.
-      - "127.0.0.1:${MT_HOST_PORT:-3000}:3000"
+      # Exposed on all interfaces for an external reverse proxy (which must
+      # provide HTTPS and set MT_TRUST_PROXY=1). Host port overridable via
+      # MT_HOST_PORT; container port stays 3000. Restrict access at the
+      # firewall/host network so only the proxy can reach this port.
+      - "${MT_HOST_PORT:-3000}:3000"
     volumes:
       - mt_v1_data:/data
     networks:
